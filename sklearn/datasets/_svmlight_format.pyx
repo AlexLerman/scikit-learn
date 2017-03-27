@@ -1,52 +1,63 @@
 # Optimized inner loop of load_svmlight_file.
 #
 # Authors: Mathieu Blondel <mathieu@mblondel.org>
-#          Lars Buitinck <L.J.Buitinck@uva.nl>
+#          Lars Buitinck
 #          Olivier Grisel <olivier.grisel@ensta.org>
-# License: Simple BSD.
+# License: BSD 3 clause
 
+import array
+from cpython cimport array
+cimport cython
 from libc.string cimport strchr
+
 cimport numpy as np
 import numpy as np
 import scipy.sparse as sp
 
-from ..utils.arraybuilder import ArrayBuilder
+from ..externals.six import b
 
-
-# csr_matrix.indices and .indptr's dtypes are undocumented. We derive them
-# empirically.
-_temp_csr = sp.csr_matrix(0)
-_INDICES_DTYPE = _temp_csr.indices.dtype
-_INDPTR_DTYPE = _temp_csr.indptr.dtype
-del _temp_csr
+np.import_array()
 
 
 cdef bytes COMMA = u','.encode('ascii')
 cdef bytes COLON = u':'.encode('ascii')
 
 
-def _load_svmlight_file(f, dtype, bint multilabel, bint zero_based):
+@cython.boundscheck(False)
+@cython.wraparound(False)
+def _load_svmlight_file(f, dtype, bint multilabel, bint zero_based,
+                        bint query_id):
+    cdef array.array data, indices, indptr
     cdef bytes line
-    cdef char *hash_ptr, *line_cstr
-    cdef Py_ssize_t hash_idx
+    cdef char *hash_ptr
+    cdef char *line_cstr
+    cdef int idx, prev_idx
+    cdef Py_ssize_t i
+    cdef bytes qid_prefix = b('qid')
+    cdef Py_ssize_t n_features
 
-    data = ArrayBuilder(dtype=dtype)
-    indptr = ArrayBuilder(dtype=_INDPTR_DTYPE)
-    indices = ArrayBuilder(dtype=_INDICES_DTYPE)
+    # Special-case float32 but use float64 for everything else;
+    # the Python code will do further conversions.
+    if dtype == np.float32:
+        data = array.array("f")
+    else:
+        dtype = np.float64
+        data = array.array("d")
+    indices = array.array("i")
+    indptr = array.array("i", [0])
+    query = np.arange(0, dtype=np.int64)
+
     if multilabel:
         labels = []
     else:
-        labels = ArrayBuilder(dtype=np.double)
+        labels = array.array("d")
 
     for line in f:
         # skip comments
         line_cstr = line
         hash_ptr = strchr(line_cstr, '#')
-        if hash_ptr == NULL:
-            hash_idx = -1           # index of '\n' in line
-        else:
-            hash_idx = hash_ptr - <char *>line
-        line = line[:hash_idx]
+        if hash_ptr != NULL:
+            line = line[:hash_ptr - line_cstr]
 
         line_parts = line.split()
         if len(line_parts) == 0:
@@ -54,29 +65,45 @@ def _load_svmlight_file(f, dtype, bint multilabel, bint zero_based):
 
         target, features = line_parts[0], line_parts[1:]
         if multilabel:
-            target = [float(y) for y in target.split(COMMA)]
+            if COLON in target:
+                target, features = [], line_parts[0:]
+            else:
+                target = [float(y) for y in target.split(COMMA)]
             target.sort()
             labels.append(tuple(target))
         else:
-            labels.append(float(target))
-        indptr.append(len(data))
+            array.resize_smart(labels, len(labels) + 1)
+            labels[len(labels) - 1] = float(target)
 
-        for i in xrange(1, len(line_parts)):
-            idx, value = line_parts[i].split(COLON, 1)
-            idx = int(idx)
+        prev_idx = -1
+        n_features = len(features)
+        if n_features and features[0].startswith(qid_prefix):
+            _, value = features[0].split(COLON, 1)
+            if query_id:
+                query.resize(len(query) + 1)
+                query[len(query) - 1] = np.int64(value)
+            features.pop(0)
+            n_features -= 1
+
+        for i in xrange(0, n_features):
+            idx_s, value = features[i].split(COLON, 1)
+            idx = int(idx_s)
             if idx < 0 or not zero_based and idx == 0:
                 raise ValueError(
-                        "invalid index %d in SVMlight/LibSVM data file" % idx)
-            indices.append(idx)
-            data.append(dtype(value))
+                        "Invalid index %d in SVMlight/LibSVM data file." % idx)
+            if idx <= prev_idx:
+                raise ValueError("Feature indices in SVMlight/LibSVM data "
+                                 "file should be sorted and unique.")
 
-    indptr.append(len(data))
+            array.resize_smart(indices, len(indices) + 1)
+            indices[len(indices) - 1] = idx
 
-    indptr = indptr.get()
-    data = data.get()
-    indices = indices.get()
+            array.resize_smart(data, len(data) + 1)
+            data[len(data) - 1] = float(value)
 
-    if not multilabel:
-        labels = labels.get()
+            prev_idx = idx
 
-    return data, indices, indptr, labels
+        array.resize_smart(indptr, len(indptr) + 1)
+        indptr[len(indptr) - 1] = len(data)
+
+    return (dtype, data, indices, indptr, labels, query)

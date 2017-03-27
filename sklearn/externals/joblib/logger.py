@@ -8,7 +8,7 @@ This module needs much love to become useful.
 # Copyright (c) 2008 Gael Varoquaux
 # License: BSD Style, 3 clauses.
 
-from __future__ import with_statement
+from __future__ import print_function
 
 import time
 import sys
@@ -44,6 +44,19 @@ def short_format_time(t):
         return " %5.1fs" % (t)
 
 
+def pformat(obj, indent=0, depth=3):
+    if 'numpy' in sys.modules:
+        import numpy as np
+        print_options = np.get_printoptions()
+        np.set_printoptions(precision=6, threshold=64, edgeitems=1)
+    else:
+        print_options = None
+    out = pprint.pformat(obj, depth=depth, indent=indent)
+    if print_options:
+        np.set_printoptions(**print_options)
+    return out
+
+
 ###############################################################################
 # class `Logger`
 ###############################################################################
@@ -61,7 +74,7 @@ class Logger(object):
         self.depth = depth
 
     def warn(self, msg):
-        logging.warn("[%s]: %s" % (self, msg))
+        logging.warning("[%s]: %s" % (self, msg))
 
     def debug(self, msg):
         # XXX: This conflicts with the debug flag used in children class
@@ -70,16 +83,7 @@ class Logger(object):
     def format(self, obj, indent=0):
         """ Return the formated representation of the object.
         """
-        if 'numpy' in sys.modules:
-            import numpy as np
-            print_options = np.get_printoptions()
-            np.set_printoptions(precision=6, threshold=64, edgeitems=1)
-        else:
-            print_options = None
-        out = pprint.pformat(obj, depth=self.depth, indent=indent)
-        if print_options:
-            np.set_printoptions(**print_options)
-        return out
+        return pformat(obj, indent=indent, depth=self.depth)
 
 
 ###############################################################################
@@ -102,7 +106,7 @@ class PrintTime(object):
             mkdirp(os.path.dirname(logfile))
             if os.path.exists(logfile):
                 # Rotate the logs
-                for i in xrange(1, 9):
+                for i in range(1, 9):
                     try:
                         shutil.move(logfile + '.%i' % i,
                                     logfile + '.%i' % (i + 1))
@@ -138,14 +142,15 @@ class PrintTime(object):
             time_lapse = time.time() - self.start_time
             full_msg = "%s: %.2fs, %.1f min" % (msg, time_lapse,
                                                 time_lapse / 60)
-        print >> sys.stderr, full_msg
+        print(full_msg, file=sys.stderr)
         if self.logfile is not None:
             try:
-                print >> file(self.logfile, 'a'), full_msg
+                with open(self.logfile, 'a') as f:
+                    print(full_msg, file=f)
             except:
                 """ Multiprocessing writing to files can create race
                     conditions. Rather fail silently than crash the
-                    caculation.
+                    calculation.
                 """
                 # XXX: We actually need a debug flag to disable this
                 # silent failure.

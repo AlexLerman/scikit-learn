@@ -16,7 +16,7 @@ For instance, in the example below, decision trees learn from data to
 approximate a sine curve with a set of if-then-else decision rules. The deeper
 the tree, the more complex the decision rules and the fitter the model.
 
-.. figure:: ../auto_examples/tree/images/plot_tree_regression_1.png
+.. figure:: ../auto_examples/tree/images/sphx_glr_plot_tree_regression_001.png
    :target: ../auto_examples/tree/plot_tree_regression.html
    :scale: 75
    :align: center
@@ -38,9 +38,11 @@ Some advantages of decision trees are:
       of variable. See :ref:`algorithms <tree_algorithms>` for more
       information.
 
+    - Able to handle multi-output problems.
+
     - Uses a white box model. If a given situation is observable in a model,
       the explanation for the condition is easily explained by boolean logic.
-      By constrast, in a black box model (e.g., in an artificial neural
+      By contrast, in a black box model (e.g., in an artificial neural
       network), results may be more difficult to interpret.
 
     - Possible to validate a model using statistical tests. That makes it
@@ -48,6 +50,7 @@ Some advantages of decision trees are:
 
     - Performs well even if its assumptions are somewhat violated by
       the true model from which the data were generated.
+
 
 The disadvantages of decision trees include:
 
@@ -78,6 +81,7 @@ The disadvantages of decision trees include:
       It is therefore recommended to balance the dataset prior to fitting
       with the decision tree.
 
+
 .. _tree_classification:
 
 Classification
@@ -86,10 +90,10 @@ Classification
 :class:`DecisionTreeClassifier` is a class capable of performing multi-class
 classification on a dataset.
 
-As other classifiers, :class:`DecisionTreeClassifier` take as input two
-arrays: an array X of size [n_samples, n_features] holding the training
-samples, and an array Y of integer values, size [n_samples], holding
-the class labels for the training samples::
+As with other classifiers, :class:`DecisionTreeClassifier` takes as input two arrays:
+an array X, sparse or dense, of size ``[n_samples, n_features]``  holding the
+training samples, and an array Y of integer values, size ``[n_samples]``,
+holding the class labels for the training samples::
 
     >>> from sklearn import tree
     >>> X = [[0, 0], [1, 1]]
@@ -97,10 +101,16 @@ the class labels for the training samples::
     >>> clf = tree.DecisionTreeClassifier()
     >>> clf = clf.fit(X, Y)
 
-After being fitted, the model can then be used to predict new values::
+After being fitted, the model can then be used to predict the class of samples::
 
     >>> clf.predict([[2., 2.]])
     array([1])
+
+Alternatively, the probability of each class can be predicted, which is the
+fraction of training samples of the same class in a leaf::
+
+    >>> clf.predict_proba([[2., 2.]])
+    array([[ 0.,  1.]])
 
 :class:`DecisionTreeClassifier` is capable of both binary (where the
 labels are [-1, 1]) classification and multiclass (where the labels are
@@ -119,9 +129,38 @@ Once trained, we can export the tree in `Graphviz
 exporter. Below is an example export of a tree trained on the entire
 iris dataset::
 
-    >>> from StringIO import StringIO
-    >>> out = StringIO()
-    >>> out = tree.export_graphviz(clf, out_file=out)
+    >>> with open("iris.dot", 'w') as f:
+    ...     f = tree.export_graphviz(clf, out_file=f)
+
+Then we can use Graphviz's ``dot`` tool to create a PDF file (or any other
+supported file type): ``dot -Tpdf iris.dot -o iris.pdf``.
+
+::
+
+    >>> import os
+    >>> os.unlink('iris.dot')
+
+Alternatively, if we have Python module ``pydotplus`` installed, we can generate
+a PDF file (or any other supported file type) directly in Python::
+
+    >>> import pydotplus # doctest: +SKIP
+    >>> dot_data = tree.export_graphviz(clf, out_file=None) # doctest: +SKIP
+    >>> graph = pydotplus.graph_from_dot_data(dot_data) # doctest: +SKIP
+    >>> graph.write_pdf("iris.pdf") # doctest: +SKIP
+
+The :func:`export_graphviz` exporter also supports a variety of aesthetic
+options, including coloring nodes by their class (or value for regression) and
+using explicit variable and class names if desired. IPython notebooks can also
+render these plots inline using the `Image()` function::
+
+    >>> from IPython.display import Image  # doctest: +SKIP
+    >>> dot_data = tree.export_graphviz(clf, out_file=None, # doctest: +SKIP
+                             feature_names=iris.feature_names,  # doctest: +SKIP
+                             class_names=iris.target_names,  # doctest: +SKIP
+                             filled=True, rounded=True,  # doctest: +SKIP
+                             special_characters=True)  # doctest: +SKIP
+    >>> graph = pydotplus.graph_from_dot_data(dot_data)  # doctest: +SKIP
+    >>> Image(graph.create_png())  # doctest: +SKIP
 
 .. only:: html
 
@@ -133,26 +172,33 @@ iris dataset::
     .. figure:: ../images/iris.pdf
        :align: center
 
-After being fitted, the model can then be used to predict new values::
+After being fitted, the model can then be used to predict the class of samples::
 
-    >>> clf.predict(iris.data[0, :])
+    >>> clf.predict(iris.data[:1, :])
     array([0])
 
-.. figure:: ../auto_examples/tree/images/plot_iris_1.png
+Alternatively, the probability of each class can be predicted, which is the
+fraction of training samples of the same class in a leaf::
+
+    >>> clf.predict_proba(iris.data[:1, :])
+    array([[ 1.,  0.,  0.]])
+
+.. figure:: ../auto_examples/tree/images/sphx_glr_plot_iris_001.png
    :target: ../auto_examples/tree/plot_iris.html
    :align: center
    :scale: 75
 
 .. topic:: Examples:
 
- * :ref:`example_tree_plot_iris.py`
+ * :ref:`sphx_glr_auto_examples_tree_plot_iris.py`
+
 
 .. _tree_regression:
 
 Regression
 ==========
 
-.. figure:: ../auto_examples/tree/images/plot_tree_regression_1.png
+.. figure:: ../auto_examples/tree/images/sphx_glr_plot_tree_regression_001.png
    :target: ../auto_examples/tree/plot_tree_regression.html
    :scale: 75
    :align: center
@@ -172,10 +218,76 @@ instead of integer values::
     >>> clf.predict([[1, 1]])
     array([ 0.5])
 
+.. topic:: Examples:
+
+ * :ref:`sphx_glr_auto_examples_tree_plot_tree_regression.py`
+
+
+.. _tree_multioutput:
+
+Multi-output problems
+=====================
+
+A multi-output problem is a supervised learning problem with several outputs
+to predict, that is when Y is a 2d array of size ``[n_samples, n_outputs]``.
+
+When there is no correlation between the outputs, a very simple way to solve
+this kind of problem is to build n independent models, i.e. one for each
+output, and then to use those models to independently predict each one of the n
+outputs. However, because it is likely that the output values related to the
+same input are themselves correlated, an often better way is to build a single
+model capable of predicting simultaneously all n outputs. First, it requires
+lower training time since only a single estimator is built. Second, the
+generalization accuracy of the resulting estimator may often be increased.
+
+With regard to decision trees, this strategy can readily be used to support
+multi-output problems. This requires the following changes:
+
+  - Store n output values in leaves, instead of 1;
+  - Use splitting criteria that compute the average reduction across all
+    n outputs.
+
+This module offers support for multi-output problems by implementing this
+strategy in both :class:`DecisionTreeClassifier` and
+:class:`DecisionTreeRegressor`. If a decision tree is fit on an output array Y
+of size ``[n_samples, n_outputs]`` then the resulting estimator will:
+
+  * Output n_output values upon ``predict``;
+
+  * Output a list of n_output arrays of class probabilities upon
+    ``predict_proba``.
+
+
+The use of multi-output trees for regression is demonstrated in
+:ref:`sphx_glr_auto_examples_tree_plot_tree_regression_multioutput.py`. In this example, the input
+X is a single real value and the outputs Y are the sine and cosine of X.
+
+.. figure:: ../auto_examples/tree/images/sphx_glr_plot_tree_regression_multioutput_001.png
+   :target: ../auto_examples/tree/plot_tree_regression_multioutput.html
+   :scale: 75
+   :align: center
+
+The use of multi-output trees for classification is demonstrated in
+:ref:`sphx_glr_auto_examples_plot_multioutput_face_completion.py`. In this example, the inputs
+X are the pixels of the upper half of faces and the outputs Y are the pixels of
+the lower half of those faces.
+
+.. figure:: ../auto_examples/images/sphx_glr_plot_multioutput_face_completion_001.png
+   :target: ../auto_examples/plot_multioutput_face_completion.html
+   :scale: 75
+   :align: center
 
 .. topic:: Examples:
 
- * :ref:`example_tree_plot_tree_regression.py`
+ * :ref:`sphx_glr_auto_examples_tree_plot_tree_regression_multioutput.py`
+ * :ref:`sphx_glr_auto_examples_plot_multioutput_face_completion.py`
+
+.. topic:: References:
+
+ * M. Dumont et al,  `Fast multi-class image annotation with random subwindows
+   and multiple output randomized trees
+   <http://www.montefiore.ulg.ac.be/services/stochastic/pubs/2009/DMWG09/dumont-visapp09-shortpaper.pdf>`_, International Conference on
+   Computer Vision Theory and Applications 2009
 
 .. _tree_complexity:
 
@@ -183,51 +295,31 @@ Complexity
 ==========
 
 In general, the run time cost to construct a balanced binary tree is
-:math:`O(n_{samples}n_{features}log(n_{samples}))` and query time
-:math:`O(log(n_{samples}))`.  Although the tree construction algorithm attempts
+:math:`O(n_{samples}n_{features}\log(n_{samples}))` and query time
+:math:`O(\log(n_{samples}))`.  Although the tree construction algorithm attempts
 to generate balanced trees, they will not always be balanced.  Assuming that the
 subtrees remain approximately balanced, the cost at each node consists of
 searching through :math:`O(n_{features})` to find the feature that offers the
 largest reduction in entropy.  This has a cost of
-:math:`O(n_{features}n_{samples}log(n_{samples}))` at each node, leading to a
+:math:`O(n_{features}n_{samples}\log(n_{samples}))` at each node, leading to a
 total cost over the entire trees (by summing the cost at each node) of
-:math:`O(n_{features}n_{samples}^{2}log(n_{samples}))`.
+:math:`O(n_{features}n_{samples}^{2}\log(n_{samples}))`.
 
 Scikit-learn offers a more efficient implementation for the construction of
 decision trees.  A naive implementation (as above) would recompute the class
 label histograms (for classification) or the means (for regression) at for each
-new split point along a given feature. By presorting the feature over all
-relevant samples, and retaining a running label count, we reduce the complexity
-at each node to :math:`O(n_{features}log(n_{samples}))`, which results in a
-total cost of :math:`O(n_{features}n_{samples}log(n_{samples}))`.
-
-This implementation also offers a parameter `min_density` to control an
-optimization heuristic. A sample mask is used to mask data points that are
-inactive at a given node, which avoids the copying of data (important for large
-datasets or training trees within an ensemble). Density is defined as the ratio
-of 'active' data samples to total samples at a given node.  The minimum density
-parameter specifies the level below which fancy indexing (and therefore data
-copied) and the sample mask reset.
-If `min_density` is 1, then fancy indexing is always used for data partitioning
-during the tree building phase. In this case, the size of memory (as a
-proportion of the input data :math:`a`) required at a node of depth :math:`n`
-can be approximated using a geometric series: :math:`size = a \frac{1 - r^n}{1 -
-r}` where :math:`r` is the ratio of samples used at each node.  A best case
-analysis shows that the lowest memory requirement (for an infinitely deep tree)
-is :math:`2 \times a`, where each partition divides the data in half.  A worst
-case analysis shows that the memory requirement can  increase to :math:`n \times
-a`. In practise it usually requires 3 to 4 times :math:`a`.
-Setting `min_density` to 0 will always use the sample mask to select the subset
-of samples at each node.  This results in little to no additional memory being
-allocated, making it appropriate for massive datasets or within ensemble
-learners. The default value for `min_density` is 0.1 which empirically
-leads to fast training for many problems.
-Typically high values of ``min_density`` will lead to excessive reallocation,
-slowing down the algorithm significantly.
+new split point along a given feature. Presorting the feature over all
+relevant samples, and retaining a running label count, will reduce the complexity
+at each node to :math:`O(n_{features}\log(n_{samples}))`, which results in a
+total cost of :math:`O(n_{features}n_{samples}\log(n_{samples}))`. This is an option
+for all tree based algorithms. By default it is turned on for gradient boosting,
+where in general it makes training faster, but turned off for all other algorithms as
+it tends to slow down training when training deep trees.
 
 
 Tips on practical use
 =====================
+
   * Decision trees tend to overfit on data with a large number of features.
     Getting the right ratio of samples to number of features is important, since
     a tree with few samples in high dimensional space is very likely to overfit.
@@ -247,17 +339,37 @@ Tips on practical use
   * Use ``min_samples_split`` or ``min_samples_leaf`` to control the number of
     samples at a leaf node.  A very small number will usually mean the tree
     will overfit, whereas a large number will prevent the tree from learning
-    the data.  Try ``min_samples_leaf=5`` as an initial value.
+    the data. Try ``min_samples_leaf=5`` as an initial value. If the sample size
+    varies greatly, a float number can be used as percentage in these two parameters.
     The main difference between the two is that ``min_samples_leaf`` guarantees
     a minimum number of samples in a leaf, while ``min_samples_split`` can
     create arbitrary small leaves, though ``min_samples_split`` is more common
     in the literature.
 
-  * Balance your dataset before training to prevent the tree from creating
-    a tree biased toward the classes that are dominant.
+  * Balance your dataset before training to prevent the tree from being biased
+    toward the classes that are dominant. Class balancing can be done by
+    sampling an equal number of samples from each class, or preferably by
+    normalizing the sum of the sample weights (``sample_weight``) for each
+    class to the same value. Also note that weight-based pre-pruning criteria,
+    such as ``min_weight_fraction_leaf``, will then be less biased toward
+    dominant classes than criteria that are not aware of the sample weights,
+    like ``min_samples_leaf``.
 
-  * All decision trees use Fortran ordered ``np.float32`` arrays internally.
+  * If the samples are weighted, it will be easier to optimize the tree
+    structure using weight-based pre-pruning criterion such as
+    ``min_weight_fraction_leaf``, which ensure that leaf nodes contain at least
+    a fraction of the overall sum of the sample weights.
+
+  * All decision trees use ``np.float32`` arrays internally.
     If training data is not in this format, a copy of the dataset will be made.
+
+  * If the input matrix X is very sparse, it is recommended to convert to sparse
+    ``csc_matrix`` before calling fit and sparse ``csr_matrix`` before calling
+    predict. Training time can be orders of magnitude faster for a sparse
+    matrix input compared to a dense matrix when features have zero values in
+    most of the samples.
+
+
 
 .. _tree_algorithms:
 
@@ -294,8 +406,9 @@ and threshold that yield the largest information gain at each node.
 
 scikit-learn uses an optimised version of the CART algorithm.
 
-.. _ID3: http://en.wikipedia.org/wiki/ID3_algorithm
-.. _CART: http://en.wikipedia.org/wiki/Predictive_analytics#Classification_and_regression_trees
+.. _ID3: https://en.wikipedia.org/wiki/ID3_algorithm
+.. _CART: https://en.wikipedia.org/wiki/Predictive_analytics#Classification_and_regression_trees_.28CART.29
+
 
 .. _tree_mathematical_formulation:
 
@@ -330,11 +443,11 @@ Select the parameters that minimises the impurity
 
 .. math::
 
-    \theta^* = argmin_\theta  G(Q, \theta)
+    \theta^* = \operatorname{argmin}_\theta  G(Q, \theta)
 
 Recurse for subsets :math:`Q_{left}(\theta^*)` and
 :math:`Q_{right}(\theta^*)` until the maximum allowable depth is reached,
-:math:`N_m < min\_samples` or :math:`N_m = 1`.
+:math:`N_m < \min_{samples}` or :math:`N_m = 1`.
 
 Classification criteria
 -----------------------
@@ -359,20 +472,24 @@ Cross-Entropy
 
 .. math::
 
-    H(X_m) = \sum_k p_{mk} log(p_{mk})
+    H(X_m) = - \sum_k p_{mk} \log(p_{mk})
 
 and Misclassification
 
 .. math::
 
-    H(X_m) = 1 - max(p_{mk})
+    H(X_m) = 1 - \max(p_{mk})
+
+where :math:`X_m` is the training data in node :math:`m`
 
 Regression criteria
 -------------------
 
 If the target is a continuous value, then for node :math:`m`,
-representing a region :math:`R_m` with :math:`N_m` observations, a common
-criterion to minimise is the Mean Squared Error
+representing a region :math:`R_m` with :math:`N_m` observations, common
+criteria to minimise are
+
+Mean Squared Error:
 
 .. math::
 
@@ -380,12 +497,21 @@ criterion to minimise is the Mean Squared Error
 
     H(X_m) = \frac{1}{N_m} \sum_{i \in N_m} (y_i - c_m)^2
 
+Mean Absolute Error:
+
+.. math::
+
+    \bar{y_m} = \frac{1}{N_m} \sum_{i \in N_m} y_i
+
+    H(X_m) = \frac{1}{N_m} \sum_{i \in N_m} |y_i - \bar{y_m}|
+
+where :math:`X_m` is the training data in node :math:`m`
 
 .. topic:: References:
 
-    * http://en.wikipedia.org/wiki/Decision_tree_learning
+    * https://en.wikipedia.org/wiki/Decision_tree_learning
 
-    * http://en.wikipedia.org/wiki/Predictive_analytics
+    * https://en.wikipedia.org/wiki/Predictive_analytics
 
     * L. Breiman, J. Friedman, R. Olshen, and C. Stone. Classification and
       Regression Trees. Wadsworth, Belmont, CA, 1984.

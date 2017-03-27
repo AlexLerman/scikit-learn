@@ -1,15 +1,27 @@
 """Automatically download MLdata datasets."""
 
 # Copyright (c) 2011 Pietro Berkes
-# License: Simplified BSD
+# License: BSD 3 clause
 
 import os
 from os.path import join, exists
 import re
+import numbers
+try:
+    # Python 2
+    from urllib2 import HTTPError
+    from urllib2 import quote
+    from urllib2 import urlopen
+except ImportError:
+    # Python 3+
+    from urllib.error import HTTPError
+    from urllib.parse import quote
+    from urllib.request import urlopen
+
+import numpy as np
 import scipy as sp
 from scipy import io
 from shutil import copyfileobj
-import urllib2
 
 from .base import get_data_home, Bunch
 
@@ -31,6 +43,7 @@ def fetch_mldata(dataname, target_name='label', data_name='data',
     mldata.org does not have an enforced convention for storing data or
     naming the columns in a data set. The default behavior of this function
     works well with the most common cases:
+
       1) data values are stored in the column 'data', and target values in the
          column 'label'
       2) alternatively, the first column stores target values, and the second
@@ -48,21 +61,21 @@ def fetch_mldata(dataname, target_name='label', data_name='data',
     Parameters
     ----------
 
-    dataname:
+    dataname :
         Name of the data set on mldata.org,
         e.g.: "leukemia", "Whistler Daily Snowfall", etc.
         The raw name is automatically converted to a mldata.org URL .
 
-    target_name: optional, default: 'label'
+    target_name : optional, default: 'label'
         Name or index of the column containing the target values.
 
-    data_name: optional, default: 'data'
+    data_name : optional, default: 'data'
         Name or index of the column containing the data.
 
-    transpose_data: optional, default: True
+    transpose_data : optional, default: True
         If True, transpose the downloaded data array.
 
-    data_home: optional, default: None
+    data_home : optional, default: None
         Specify another download and cache folder for the data sets. By default
         all scikit learn data is stored in '~/scikit_learn_data' subfolders.
 
@@ -78,25 +91,36 @@ def fetch_mldata(dataname, target_name='label', data_name='data',
     Examples
     --------
     Load the 'iris' dataset from mldata.org:
-    >>> from sklearn.datasets.mldata import fetch_mldata
-    >>> iris = fetch_mldata('iris')
-    >>> iris.target[0]
-    1
-    >>> print iris.data[0]
-    [-0.555556  0.25     -0.864407 -0.916667]
 
-    Load the 'leukemia' dataset from mldata.org, which respects the
-    sklearn axes convention:
-    >>> leuk = fetch_mldata('leukemia', transpose_data=False)
-    >>> print leuk.data.shape[0]
-    7129
+    >>> from sklearn.datasets.mldata import fetch_mldata
+    >>> import tempfile
+    >>> test_data_home = tempfile.mkdtemp()
+
+    >>> iris = fetch_mldata('iris', data_home=test_data_home)
+    >>> iris.target.shape
+    (150,)
+    >>> iris.data.shape
+    (150, 4)
+
+    Load the 'leukemia' dataset from mldata.org, which needs to be transposed
+    to respects the scikit-learn axes convention:
+
+    >>> leuk = fetch_mldata('leukemia', transpose_data=True,
+    ...                     data_home=test_data_home)
+    >>> leuk.data.shape
+    (72, 7129)
 
     Load an alternative 'iris' dataset, which has different names for the
     columns:
+
     >>> iris2 = fetch_mldata('datasets-UCI iris', target_name=1,
-    ...                      data_name=0)
+    ...                      data_name=0, data_home=test_data_home)
     >>> iris3 = fetch_mldata('datasets-UCI iris',
-    ...                      target_name='class', data_name='double0')
+    ...                      target_name='class', data_name='double0',
+    ...                      data_home=test_data_home)
+
+    >>> import shutil
+    >>> shutil.rmtree(test_data_home)
     """
 
     # normalize dataset name
@@ -113,10 +137,10 @@ def fetch_mldata(dataname, target_name='label', data_name='data',
 
     # if the file does not exist, download it
     if not exists(filename):
-        urlname = MLDATA_BASE_URL % urllib2.quote(dataname)
+        urlname = MLDATA_BASE_URL % quote(dataname)
         try:
-            mldata_url = urllib2.urlopen(urlname)
-        except urllib2.HTTPError as e:
+            mldata_url = urlopen(urlname)
+        except HTTPError as e:
             if e.code == 404:
                 e.msg = "Dataset '%s' not found on mldata.org." % dataname
             raise
@@ -140,9 +164,9 @@ def fetch_mldata(dataname, target_name='label', data_name='data',
                  for descr in matlab_dict['mldata_descr_ordering'][0]]
 
     # if target or data names are indices, transform then into names
-    if isinstance(target_name, int):
+    if isinstance(target_name, numbers.Integral):
         target_name = col_names[target_name]
-    if isinstance(data_name, int):
+    if isinstance(data_name, numbers.Integral):
         data_name = col_names[data_name]
 
     # rules for making sense of the mldata.org data format
@@ -181,7 +205,7 @@ def fetch_mldata(dataname, target_name='label', data_name='data',
             del dataset[col_names[1]]
             dataset['data'] = matlab_dict[col_names[1]]
 
-    # set axes to sklearn conventions
+    # set axes to scikit-learn conventions
     if transpose_data:
         dataset['data'] = dataset['data'].T
     if 'target' in dataset:
@@ -189,3 +213,28 @@ def fetch_mldata(dataname, target_name='label', data_name='data',
             dataset['target'] = dataset['target'].squeeze()
 
     return Bunch(**dataset)
+
+
+# The following is used by test runners to setup the docstring tests fixture
+
+def setup_module(module):
+    # setup mock urllib2 module to avoid downloading from mldata.org
+    from sklearn.utils.testing import install_mldata_mock
+    install_mldata_mock({
+        'iris': {
+            'data': np.empty((150, 4)),
+            'label': np.empty(150),
+        },
+        'datasets-uci-iris': {
+            'double0': np.empty((150, 4)),
+            'class': np.empty((150,)),
+        },
+        'leukemia': {
+            'data': np.empty((72, 7129)),
+        },
+    })
+
+
+def teardown_module(module):
+    from sklearn.utils.testing import uninstall_mldata_mock
+    uninstall_mldata_mock()

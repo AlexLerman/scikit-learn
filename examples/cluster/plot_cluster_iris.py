@@ -16,15 +16,15 @@ The next plot displays what using eight clusters would deliver
 and finally the ground truth.
 
 """
-print __doc__
+print(__doc__)
 
 
-# Code source: Gael Varoqueux
-# Modified for Documentation merge by Jaques Grobler
-# License: BSD
+# Code source: Gaël Varoquaux
+# Modified for documentation by Jaques Grobler
+# License: BSD 3 clause
 
 import numpy as np
-import pylab as pl
+import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 
 
@@ -38,19 +38,19 @@ iris = datasets.load_iris()
 X = iris.data
 y = iris.target
 
-estimators = {'k_means_iris_3': KMeans(k=3),
-              'k_means_iris_8': KMeans(k=8),
-              'k_means_iris_bad_init': KMeans(k=3, n_init=1, init='random'),
-             }
+estimators = {'k_means_iris_3': KMeans(n_clusters=3),
+              'k_means_iris_8': KMeans(n_clusters=8),
+              'k_means_iris_bad_init': KMeans(n_clusters=3, n_init=1,
+                                              init='random')}
 
 
 fignum = 1
-for name, est in estimators.iteritems():
-    fig = pl.figure(fignum, figsize=(4, 3))
-    pl.clf()
+for name, est in estimators.items():
+    fig = plt.figure(fignum, figsize=(4, 3))
+    plt.clf()
     ax = Axes3D(fig, rect=[0, 0, .95, 1], elev=48, azim=134)
 
-    pl.cla()
+    plt.cla()
     est.fit(X)
     labels = est.labels_
 
@@ -65,11 +65,11 @@ for name, est in estimators.iteritems():
     fignum = fignum + 1
 
 # Plot the ground truth
-fig = pl.figure(fignum, figsize=(4, 3))
-pl.clf()
+fig = plt.figure(fignum, figsize=(4, 3))
+plt.clf()
 ax = Axes3D(fig, rect=[0, 0, .95, 1], elev=48, azim=134)
 
-pl.cla()
+plt.cla()
 
 for name, label in [('Setosa', 0),
                     ('Versicolour', 1),
@@ -78,8 +78,7 @@ for name, label in [('Setosa', 0),
               X[y == label, 0].mean() + 1.5,
               X[y == label, 2].mean(), name,
               horizontalalignment='center',
-              bbox=dict(alpha=.5, edgecolor='w', facecolor='w'),
-             )
+              bbox=dict(alpha=.5, edgecolor='w', facecolor='w'))
 # Reorder the labels to have colors matching the cluster results
 y = np.choose(y, [1, 2, 0]).astype(np.float)
 ax.scatter(X[:, 3], X[:, 0], X[:, 2], c=y)
@@ -90,4 +89,4 @@ ax.w_zaxis.set_ticklabels([])
 ax.set_xlabel('Petal width')
 ax.set_ylabel('Sepal length')
 ax.set_zlabel('Petal length')
-pl.show()
+plt.show()

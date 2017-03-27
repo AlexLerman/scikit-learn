@@ -10,21 +10,21 @@ covariance estimator (the Minimum Covariance Determinant).
 """
 # Author: Virgile Fritsch <virgile.fritsch@inria.fr>
 #
-# License: BSD Style.
+# License: BSD 3 clause
 
 import numpy as np
-import  scipy as sp
+import scipy as sp
 from . import MinCovDet
 from ..base import ClassifierMixin
-from ..utils import deprecated
+from ..utils.validation import check_is_fitted
 
 
-class OutlierDetectionMixin(ClassifierMixin):
+class OutlierDetectionMixin(object):
     """Set of methods for outliers detection with covariance estimators.
 
     Parameters
     ----------
-    contamination: float, 0. < contamination < 0.5
+    contamination : float, 0. < contamination < 0.5
         The amount of contamination of the data set, i.e. the proportion
         of outliers in the data set.
 
@@ -37,41 +37,39 @@ class OutlierDetectionMixin(ClassifierMixin):
     """
     def __init__(self, contamination=0.1):
         self.contamination = contamination
-        self.threshold = None
 
-    def decision_function(self, X, raw_mahalanobis=False):
+    def decision_function(self, X, raw_values=False):
         """Compute the decision function of the given observations.
 
         Parameters
         ----------
-        X: array-like, shape (n_samples, n_features)
+        X : array-like, shape (n_samples, n_features)
 
-        raw_mahalanobis: bool
+        raw_values : bool
             Whether or not to consider raw Mahalanobis distances as the
             decision function. Must be False (default) for compatibility
             with the others outlier detection tools.
 
         Returns
         -------
-        decision: array-like, shape (n_samples, )
+        decision : array-like, shape (n_samples, )
             The values of the decision function for each observations.
-            It is equal to the Mahalanobis distances if `raw_mahalanobis`
-            is True. By default (``raw_mahalanobis=True``), it is equal
+            It is equal to the Mahalanobis distances if `raw_values`
+            is True. By default (``raw_values=True``), it is equal
             to the cubic root of the shifted Mahalanobis distances.
             In that case, the threshold for being an outlier is 0, which
             ensures a compatibility with other outlier detection tools
             such as the One-Class SVM.
 
         """
-        X_centered = X - self.location_
-        mahal_dist = self.mahalanobis(X_centered)
-        if raw_mahalanobis:
+        check_is_fitted(self, 'threshold_')
+        mahal_dist = self.mahalanobis(X)
+        if raw_values:
             decision = mahal_dist
         else:
-            if self.threshold is None:
-                raise Exception("Please fit data before predicting")
+            check_is_fitted(self, 'threshold_')
             transformed_mahal_dist = mahal_dist ** 0.33
-            decision = self.threshold ** 0.33 - transformed_mahal_dist
+            decision = self.threshold_ ** 0.33 - transformed_mahal_dist
 
         return decision
 
@@ -80,57 +78,40 @@ class OutlierDetectionMixin(ClassifierMixin):
 
         Parameters
         ----------
-        X: array-like, shape = (n_samples, n_features)
+        X : array-like, shape = (n_samples, n_features)
 
         Returns
         -------
-        is_outliers: array, shape = (n_samples, ), dtype = bool
+        is_outliers : array, shape = (n_samples, ), dtype = bool
             For each observations, tells whether or not it should be considered
             as an outlier according to the fitted model.
-        threshold: float,
+
+        threshold : float,
             The values of the less outlying point's decision function.
 
         """
-        if self.threshold is None:
-            raise Exception("Please fit data before predicting")
+        check_is_fitted(self, 'threshold_')
         is_inlier = -np.ones(X.shape[0], dtype=int)
         if self.contamination is not None:
-            values = self.decision_function(X, raw_mahalanobis=True)
-            is_inlier[values <= self.threshold] = 1
+            values = self.decision_function(X, raw_values=True)
+            is_inlier[values <= self.threshold_] = 1
         else:
-            raise NotImplemented("You must provide a contamination rate.")
+            raise NotImplementedError("You must provide a contamination rate.")
 
         return is_inlier
 
 
-class EllipticEnvelope(OutlierDetectionMixin, MinCovDet):
+class EllipticEnvelope(ClassifierMixin, OutlierDetectionMixin, MinCovDet):
     """An object for detecting outliers in a Gaussian distributed dataset.
 
-    Attributes
-    ----------
-    `contamination`: float, 0. < contamination < 0.5
-      The amount of contamination of the data set, i.e. the proportion of \
-      outliers in the data set.
-
-    `location_`: array-like, shape (n_features,)
-        Estimated robust location
-
-    `covariance_`: array-like, shape (n_features, n_features)
-        Estimated robust covariance matrix
-
-    `precision_`: array-like, shape (n_features, n_features)
-        Estimated pseudo inverse matrix.
-        (stored only if store_precision is True)
-
-    `support_`: array-like, shape (n_samples,)
-        A mask of the observations that have been used to compute the
-        robust estimates of location and shape.
+    Read more in the :ref:`User Guide <outlier_detection>`.
 
     Parameters
     ----------
-    store_precision: bool
-        Specify if the estimated precision is stored
-    assume_centered: Boolean
+    store_precision : bool
+        Specify if the estimated precision is stored.
+
+    assume_centered : Boolean
         If True, the support of robust location and covariance estimates
         is computed, and a covariance estimate is recomputed from it,
         without centering the data.
@@ -138,14 +119,32 @@ class EllipticEnvelope(OutlierDetectionMixin, MinCovDet):
         zero but is not exactly zero.
         If False, the robust location and covariance are directly computed
         with the FastMCD algorithm without additional treatment.
-    support_fraction: float, 0 < support_fraction < 1
+
+    support_fraction : float, 0 < support_fraction < 1
         The proportion of points to be included in the support of the raw
         MCD estimate. Default is ``None``, which implies that the minimum
         value of support_fraction will be used within the algorithm:
-        [n_sample + n_features + 1] / 2
-    contamination: float, 0. < contamination < 0.5
+        `[n_sample + n_features + 1] / 2`.
+
+    contamination : float, 0. < contamination < 0.5
         The amount of contamination of the data set, i.e. the proportion
         of outliers in the data set.
+
+    Attributes
+    ----------
+    location_ : array-like, shape (n_features,)
+        Estimated robust location
+
+    covariance_ : array-like, shape (n_features, n_features)
+        Estimated robust covariance matrix
+
+    precision_ : array-like, shape (n_features, n_features)
+        Estimated pseudo inverse matrix.
+        (stored only if store_precision is True)
+
+    support_ : array-like, shape (n_samples,)
+        A mask of the observations that have been used to compute the
+        robust estimates of location and shape.
 
     See Also
     --------
@@ -164,25 +163,16 @@ class EllipticEnvelope(OutlierDetectionMixin, MinCovDet):
 
     """
     def __init__(self, store_precision=True, assume_centered=False,
-                 support_fraction=None, contamination=0.1):
+                 support_fraction=None, contamination=0.1,
+                 random_state=None):
         MinCovDet.__init__(self, store_precision=store_precision,
                            assume_centered=assume_centered,
-                           support_fraction=support_fraction)
+                           support_fraction=support_fraction,
+                           random_state=random_state)
         OutlierDetectionMixin.__init__(self, contamination=contamination)
 
-    def fit(self, X):
-        """
-        """
+    def fit(self, X, y=None):
         MinCovDet.fit(self, X)
-        X_centered = X - self.location_
-        values = self.mahalanobis(X_centered)
-        self.threshold = sp.stats.scoreatpercentile(
-            values, 100. * (1. - self.contamination))
-
+        self.threshold_ = sp.stats.scoreatpercentile(
+            self.dist_, 100. * (1. - self.contamination))
         return self
-
-
-# Deprecated classes
-@deprecated("Use EllipticEnvelope instead")
-class EllipticEnvelop(EllipticEnvelope):
-    pass

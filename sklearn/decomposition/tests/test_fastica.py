@@ -1,18 +1,23 @@
 """
 Test the fastica algorithm.
 """
-import warnings
-import numpy as np
-from numpy.testing import assert_almost_equal
-from nose.tools import assert_true
-
-from scipy import stats
 import itertools
+import warnings
 
+import numpy as np
+from scipy import stats
+
+from sklearn.utils.testing import assert_almost_equal
+from sklearn.utils.testing import assert_array_almost_equal
+from sklearn.utils.testing import assert_true
 from sklearn.utils.testing import assert_less
+from sklearn.utils.testing import assert_equal
+from sklearn.utils.testing import assert_warns
+from sklearn.utils.testing import assert_raises
 
-from .. import FastICA, fastica, PCA
-from ..fastica_ import _gs_decorrelation
+from sklearn.decomposition import FastICA, fastica, PCA
+from sklearn.decomposition.fastica_ import _gs_decorrelation
+from sklearn.externals.six import moves
 
 
 def center_and_norm(x, axis=-1):
@@ -32,9 +37,7 @@ def center_and_norm(x, axis=-1):
 
 
 def test_gs():
-    """
-    Test gram schmidt orthonormalization
-    """
+    # Test gram schmidt orthonormalization
     # generate a random orthogonal  matrix
     rng = np.random.RandomState(0)
     W, _, _ = np.linalg.svd(rng.randn(10, 10))
@@ -47,11 +50,11 @@ def test_gs():
     assert_less((tmp[:5] ** 2).sum(), 1.e-10)
 
 
-def test_fastica(add_noise=False):
-    """ Test the FastICA algorithm on very simple data.
-    """
-    # scipy.stats uses the global RNG:
+def test_fastica_simple(add_noise=False):
+    # Test the FastICA algorithm on very simple data.
     rng = np.random.RandomState(0)
+    # scipy.stats uses the global RNG:
+    np.random.seed(0)
     n_samples = 1000
     # Generate two sources:
     s1 = (2 * np.sin(np.linspace(0, 100, n_samples)) > 0) - 1
@@ -62,7 +65,7 @@ def test_fastica(add_noise=False):
 
     # Mixing angle
     phi = 0.6
-    mixing = np.array([[np.cos(phi),  np.sin(phi)],
+    mixing = np.array([[np.cos(phi), np.sin(phi)],
                        [np.sin(phi), -np.cos(phi)]])
     m = np.dot(mixing, s)
 
@@ -71,16 +74,23 @@ def test_fastica(add_noise=False):
 
     center_and_norm(m)
 
+    # function as fun arg
+    def g_test(x):
+        return x ** 3, (3 * x ** 2).mean(axis=-1)
+
     algos = ['parallel', 'deflation']
-    nls = ['logcosh', 'exp', 'cube']
+    nls = ['logcosh', 'exp', 'cube', g_test]
     whitening = [True, False]
     for algo, nl, whiten in itertools.product(algos, nls, whitening):
         if whiten:
             k_, mixing_, s_ = fastica(m.T, fun=nl, algorithm=algo)
+            assert_raises(ValueError, fastica, m.T, fun=np.tanh,
+                          algorithm=algo)
         else:
             X = PCA(n_components=2, whiten=True).fit_transform(m.T)
-            k_, mixing_, s_ = fastica(X, fun=nl, algorithm=algo,
-                                     whiten=False)
+            k_, mixing_, s_ = fastica(X, fun=nl, algorithm=algo, whiten=False)
+            assert_raises(ValueError, fastica, X, fun=np.tanh,
+                          algorithm=algo)
         s_ = s_.T
         # Check that the mixing model described in the docstring holds:
         if whiten:
@@ -96,7 +106,7 @@ def test_fastica(add_noise=False):
         s2_ *= np.sign(np.dot(s2_, s2))
 
         # Check that we have estimated the original sources
-        if add_noise == False:
+        if not add_noise:
             assert_almost_equal(np.dot(s1_, s1) / n_samples, 1, decimal=2)
             assert_almost_equal(np.dot(s2_, s2) / n_samples, 1, decimal=2)
         else:
@@ -104,28 +114,35 @@ def test_fastica(add_noise=False):
             assert_almost_equal(np.dot(s2_, s2) / n_samples, 1, decimal=1)
 
     # Test FastICA class
+    _, _, sources_fun = fastica(m.T, fun=nl, algorithm=algo, random_state=0)
     ica = FastICA(fun=nl, algorithm=algo, random_state=0)
-    ica.fit(m)
-    ica.get_mixing_matrix()
+    sources = ica.fit_transform(m.T)
+    assert_equal(ica.components_.shape, (2, 2))
+    assert_equal(sources.shape, (1000, 2))
+
+    assert_array_almost_equal(sources_fun, sources)
+    assert_array_almost_equal(sources, ica.transform(m.T))
+
+    assert_equal(ica.mixing_.shape, (2, 2))
+
+    for fn in [np.tanh, "exp(-.5(x^2))"]:
+        ica = FastICA(fun=fn, algorithm=algo, random_state=0)
+        assert_raises(ValueError, ica.fit, m.T)
+
+    assert_raises(TypeError, FastICA(fun=moves.xrange(10)).fit, m.T)
 
 
 def test_fastica_nowhiten():
     m = [[0, 1], [1, 0]]
-    ica = FastICA(whiten=False, random_state=0)
-    ica.fit(m)
-    ica.get_mixing_matrix()
 
     # test for issue #697
-    with warnings.catch_warnings(record=True) as w:
-        warnings.simplefilter("always")
-        ica = FastICA(n_components=1, whiten=False, random_state=0)
-        ica.fit(m)  # should raise warning
-        assert_true(len(w) == 1)  # 1 warning should be raised
+    ica = FastICA(n_components=1, whiten=False, random_state=0)
+    assert_warns(UserWarning, ica.fit, m)
+    assert_true(hasattr(ica, 'mixing_'))
 
 
 def test_non_square_fastica(add_noise=False):
-    """ Test the FastICA algorithm on very simple data.
-    """
+    # Test the FastICA algorithm on very simple data.
     rng = np.random.RandomState(0)
 
     n_samples = 1000
@@ -162,11 +179,57 @@ def test_non_square_fastica(add_noise=False):
     s2_ *= np.sign(np.dot(s2_, s2))
 
     # Check that we have estimated the original sources
-    if add_noise == False:
+    if not add_noise:
         assert_almost_equal(np.dot(s1_, s1) / n_samples, 1, decimal=3)
         assert_almost_equal(np.dot(s2_, s2) / n_samples, 1, decimal=3)
 
 
-if __name__ == '__main__':
-    import nose
-    nose.run(argv=['', __file__])
+def test_fit_transform():
+    # Test FastICA.fit_transform
+    rng = np.random.RandomState(0)
+    X = rng.random_sample((100, 10))
+    for whiten, n_components in [[True, 5], [False, None]]:
+        n_components_ = (n_components if n_components is not None else
+                         X.shape[1])
+
+        ica = FastICA(n_components=n_components, whiten=whiten, random_state=0)
+        Xt = ica.fit_transform(X)
+        assert_equal(ica.components_.shape, (n_components_, 10))
+        assert_equal(Xt.shape, (100, n_components_))
+
+        ica = FastICA(n_components=n_components, whiten=whiten, random_state=0)
+        ica.fit(X)
+        assert_equal(ica.components_.shape, (n_components_, 10))
+        Xt2 = ica.transform(X)
+
+        assert_array_almost_equal(Xt, Xt2)
+
+
+def test_inverse_transform():
+    # Test FastICA.inverse_transform
+    n_features = 10
+    n_samples = 100
+    n1, n2 = 5, 10
+    rng = np.random.RandomState(0)
+    X = rng.random_sample((n_samples, n_features))
+    expected = {(True, n1): (n_features, n1),
+                (True, n2): (n_features, n2),
+                (False, n1): (n_features, n2),
+                (False, n2): (n_features, n2)}
+    for whiten in [True, False]:
+        for n_components in [n1, n2]:
+            n_components_ = (n_components if n_components is not None else
+                             X.shape[1])
+            ica = FastICA(n_components=n_components, random_state=rng,
+                          whiten=whiten)
+            with warnings.catch_warnings(record=True):
+                # catch "n_components ignored" warning
+                Xt = ica.fit_transform(X)
+            expected_shape = expected[(whiten, n_components_)]
+            assert_equal(ica.mixing_.shape, expected_shape)
+            X2 = ica.inverse_transform(Xt)
+            assert_equal(X.shape, X2.shape)
+
+            # reversibility test in non-reduction case
+            if n_components == X.shape[1]:
+                assert_array_almost_equal(X, X2)

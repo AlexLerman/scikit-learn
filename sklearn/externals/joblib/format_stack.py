@@ -28,13 +28,12 @@ import sys
 import time
 import tokenize
 import traceback
-import types
+
 try:                           # Python 2
     generate_tokens = tokenize.generate_tokens
 except AttributeError:         # Python 3
     generate_tokens = tokenize.tokenize
 
-PY3 = (sys.version[0] == '3')
 INDENT = ' ' * 8
 
 
@@ -136,15 +135,10 @@ def _fixed_getframes(etb, context=1, tb_offset=0):
     aux = traceback.extract_tb(etb)
     assert len(records) == len(aux)
     for i, (file, lnum, _, _) in enumerate(aux):
-        maybeStart = lnum - 1 - context // 2
-        start = max(maybeStart, 0)
+        maybe_start = lnum - 1 - context // 2
+        start = max(maybe_start, 0)
         end = start + context
         lines = linecache.getlines(file)[start:end]
-        # pad with empty lines if necessary
-        if maybeStart < 0:
-            lines = (['\n'] * -maybeStart) + lines
-        if len(lines) < context:
-            lines += ['\n'] * (context - len(lines))
         buf = list(records[i])
         buf[LNUM_POS] = lnum
         buf[INDEX_POS] = lnum - 1 - start
@@ -187,7 +181,6 @@ def format_records(records):   # , print_globals=False):
     frames = []
     abspath = os.path.abspath
     for frame, file, lnum, func, lines, index in records:
-        #print '*** record:',file,lnum,func,lines,index  # dbg
         try:
             file = file and abspath(file) or '?'
         except OSError:
@@ -195,14 +188,13 @@ def format_records(records):   # , print_globals=False):
             # the abspath call will throw an OSError.  Just ignore it and
             # keep the original file string.
             pass
+
+        if file.endswith('.pyc'):
+            file = file[:-4] + '.py'
+
         link = file
-        try:
-            args, varargs, varkw, locals = inspect.getargvalues(frame)
-        except:
-            # This can happen due to a bug in python2.3.  We should be
-            # able to remove this try/except when 2.4 becomes a
-            # requirement.  Bug details at http://python.org/sf/1005466
-            print "\nJoblib's exception reporting continues...\n"
+
+        args, varargs, varkw, locals = inspect.getargvalues(frame)
 
         if func == '?':
             call = ''
@@ -220,7 +212,7 @@ def format_records(records):   # , print_globals=False):
                 # inspect messes up resolving the argument list of view()
                 # and barfs out. At some point I should dig into this one
                 # and file a bug report about it.
-                print "\nJoblib's exception reporting continues...\n"
+                print("\nJoblib's exception reporting continues...\n")
                 call = 'in %s(***failed resolving arguments***)' % func
 
         # Initialize a list of names on the current line, which the
@@ -232,7 +224,7 @@ def format_records(records):   # , print_globals=False):
 
             The list of names it appends to (from the enclosing scope) can
             contain repeated composite names.  This is unavoidable, since
-            there is no way to disambguate partial dotted structures until
+            there is no way to disambiguate partial dotted structures until
             the full list is known.  The caller is responsible for pruning
             the final list of duplicates before using it."""
 
@@ -276,13 +268,15 @@ def format_records(records):   # , print_globals=False):
             # enclosing scope.
             for token in generate_tokens(linereader):
                 tokeneater(*token)
-        except (IndexError, UnicodeDecodeError):
+        except (IndexError, UnicodeDecodeError, SyntaxError):
             # signals exit of tokenizer
+            # SyntaxError can happen when trying to tokenize
+            # a compiled (e.g. .so or .pyd) extension
             pass
-        except tokenize.TokenError, msg:
-            _m = ("An unexpected error occurred while tokenizing input\n"
+        except tokenize.TokenError as msg:
+            _m = ("An unexpected error occurred while tokenizing input file %s\n"
                   "The following traceback may be corrupted or invalid\n"
-                  "The error message is: %s\n" % msg)
+                  "The error message is: %s\n" % (file, msg))
             print(_m)
 
         # prune names list of duplicates, but keep the right order
@@ -295,7 +289,7 @@ def format_records(records):   # , print_globals=False):
             if name_base in frame.f_code.co_varnames:
                 if name_base in locals.keys():
                     try:
-                        value = repr(eval(name_full, locals))
+                        value = safe_repr(eval(name_full, locals))
                     except:
                         value = "undefined"
                 else:
@@ -305,7 +299,7 @@ def format_records(records):   # , print_globals=False):
             #elif print_globals:
             #    if frame.f_globals.has_key(name_base):
             #        try:
-            #            value = repr(eval(name_full,frame.f_globals))
+            #            value = safe_repr(eval(name_full,frame.f_globals))
             #        except:
             #            value = "undefined"
             #    else:
@@ -350,21 +344,13 @@ def format_exc(etype, evalue, etb, context=5, tb_offset=0):
     date = time.ctime(time.time())
     pid = 'PID: %i' % os.getpid()
 
-    head = '%s%s%s\n%s%s%s' % (etype, ' ' * (75 - len(str(etype)) - len(date)),
-                           date, pid, ' ' * (75 - len(str(pid)) - len(pyver)),
-                           pyver)
+    head = '%s%s%s\n%s%s%s' % (
+        etype, ' ' * (75 - len(str(etype)) - len(date)),
+        date, pid, ' ' * (75 - len(str(pid)) - len(pyver)),
+        pyver)
 
-    # Flush cache before calling inspect.  This helps alleviate some of the
-    # problems with python 2.3's inspect.py.
-    linecache.checkcache()
     # Drop topmost frames if requested
-    try:
-        records = _fixed_getframes(etb, context, tb_offset)
-    except:
-        raise
-        print '\nUnfortunately, your original traceback can not be ' + \
-              'constructed.\n'
-        return ''
+    records = _fixed_getframes(etb, context, tb_offset)
 
     # Get (safely) a string form of the exception info
     try:
@@ -375,23 +361,6 @@ def format_exc(etype, evalue, etb, context=5, tb_offset=0):
         etype_str, evalue_str = map(str, (etype, evalue))
     # ... and format it
     exception = ['%s: %s' % (etype_str, evalue_str)]
-    if (not PY3) and type(evalue) is types.InstanceType:
-        try:
-            names = [w for w in dir(evalue) if isinstance(w, basestring)]
-        except:
-            # Every now and then, an object with funny inernals blows up
-            # when dir() is called on it.  We do the best we can to report
-            # the problem and continue
-            exception.append(
-                    'Exception reporting error (object with broken dir()):'
-                    )
-            etype_str, evalue_str = map(str, sys.exc_info()[:2])
-            exception.append('%s: %s' % (etype_str, evalue_str))
-            names = []
-        for name in names:
-            value = safe_repr(getattr(evalue, name))
-            exception.append('\n%s%s = %s' % (INDENT, name, value))
-
     frames = format_records(records)
     return '%s\n%s\n%s' % (head, '\n'.join(frames), ''.join(exception[0]))
 
@@ -416,19 +385,14 @@ def format_outer_frames(context=5, stack_start=None, stack_end=None,
             if filename.endswith('.pyc'):
                 filename = filename[:-4] + '.py'
         if ignore_ipython:
-            # Hack to avoid printing the interals of IPython
-            if (os.path.basename(filename) == 'iplib.py'
-                        and func_name in ('safe_execfile', 'runcode')):
+            # Hack to avoid printing the internals of IPython
+            if (os.path.basename(filename) in ('iplib.py', 'py3compat.py')
+                        and func_name in ('execfile', 'safe_execfile', 'runcode')):
                 break
-        maybeStart = line_no - 1 - context // 2
-        start = max(maybeStart, 0)
+        maybe_start = line_no - 1 - context // 2
+        start = max(maybe_start, 0)
         end = start + context
         lines = linecache.getlines(filename)[start:end]
-        # pad with empty lines if necessary
-        if maybeStart < 0:
-            lines = (['\n'] * -maybeStart) + lines
-        if len(lines) < context:
-            lines += ['\n'] * (context - len(lines))
         buf = list(records[i])
         buf[LNUM_POS] = line_no
         buf[INDEX_POS] = line_no - 1 - start

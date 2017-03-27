@@ -9,7 +9,26 @@ Models.
 from .empirical_covariance_ import empirical_covariance, EmpiricalCovariance, \
     log_likelihood
 from .shrunk_covariance_ import shrunk_covariance, ShrunkCovariance, \
-    ledoit_wolf, LedoitWolf, oas, OAS
+    ledoit_wolf, ledoit_wolf_shrinkage, \
+    LedoitWolf, oas, OAS
 from .robust_covariance import fast_mcd, MinCovDet
 from .graph_lasso_ import graph_lasso, GraphLasso, GraphLassoCV
-from .outlier_detection import EllipticEnvelope, EllipticEnvelop
+from .outlier_detection import EllipticEnvelope
+
+
+__all__ = ['EllipticEnvelope',
+           'EmpiricalCovariance',
+           'GraphLasso',
+           'GraphLassoCV',
+           'LedoitWolf',
+           'MinCovDet',
+           'OAS',
+           'ShrunkCovariance',
+           'empirical_covariance',
+           'fast_mcd',
+           'graph_lasso',
+           'ledoit_wolf',
+           'ledoit_wolf_shrinkage',
+           'log_likelihood',
+           'oas',
+           'shrunk_covariance']

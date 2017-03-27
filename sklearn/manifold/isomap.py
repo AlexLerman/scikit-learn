@@ -1,21 +1,23 @@
 """Isomap for manifold learning"""
 
 # Author: Jake Vanderplas  -- <vanderplas@astro.washington.edu>
-# License: BSD, (C) 2011
+# License: BSD 3 clause (C) 2011
 
 import numpy as np
-import warnings
-from ..base import BaseEstimator
+from ..base import BaseEstimator, TransformerMixin
 from ..neighbors import NearestNeighbors, kneighbors_graph
+from ..utils import check_array
 from ..utils.graph import graph_shortest_path
 from ..decomposition import KernelPCA
 from ..preprocessing import KernelCenterer
 
 
-class Isomap(BaseEstimator):
+class Isomap(BaseEstimator, TransformerMixin):
     """Isomap Embedding
 
     Non-linear dimensionality reduction through Isometric Mapping
+
+    Read more in the :ref:`User Guide <isomap>`.
 
     Parameters
     ----------
@@ -26,65 +28,68 @@ class Isomap(BaseEstimator):
         number of coordinates for the manifold
 
     eigen_solver : ['auto'|'arpack'|'dense']
-        'auto' : attempt to choose the most efficient solver
-            for the given problem.
-        'arpack' : use Arnoldi decomposition to find the eigenvalues
-            and eigenvectors.  Note that arpack can handle both dense
-            and sparse data efficiently
-        'dense' : use a direct solver (i.e. LAPACK)
-            for the eigenvalue decomposition.
+        'auto' : Attempt to choose the most efficient solver
+        for the given problem.
+
+        'arpack' : Use Arnoldi decomposition to find the eigenvalues
+        and eigenvectors.
+
+        'dense' : Use a direct solver (i.e. LAPACK)
+        for the eigenvalue decomposition.
 
     tol : float
-        convergence tolerance passed to arpack or lobpcg.
-        not used if eigen_solver == 'dense'
+        Convergence tolerance passed to arpack or lobpcg.
+        not used if eigen_solver == 'dense'.
 
     max_iter : integer
-        maximum number of iterations for the arpack solver.
-        not used if eigen_solver == 'dense'
+        Maximum number of iterations for the arpack solver.
+        not used if eigen_solver == 'dense'.
 
     path_method : string ['auto'|'FW'|'D']
-        method to use in finding shortest path.
-        'auto' : attempt to choose the best algorithm automatically
-        'FW' : Floyd-Warshall algorithm
-        'D' : Dijkstra algorithm with Fibonacci Heaps
+        Method to use in finding shortest path.
+
+        'auto' : attempt to choose the best algorithm automatically.
+
+        'FW' : Floyd-Warshall algorithm.
+
+        'D' : Dijkstra's algorithm.
 
     neighbors_algorithm : string ['auto'|'brute'|'kd_tree'|'ball_tree']
-        algorithm to use for nearest neighbors search,
-        passed to neighbors.NearestNeighbors instance
+        Algorithm to use for nearest neighbors search,
+        passed to neighbors.NearestNeighbors instance.
+
+    n_jobs : int, optional (default = 1)
+        The number of parallel jobs to run.
+        If ``-1``, then the number of jobs is set to the number of CPU cores.
 
     Attributes
     ----------
-    `embedding_` : array-like, shape (n_samples, n_components)
-        Stores the embedding vectors
+    embedding_ : array-like, shape (n_samples, n_components)
+        Stores the embedding vectors.
 
-    `kernel_pca_` : `KernelPCA` object used to implement the embedding
+    kernel_pca_ : object
+        `KernelPCA` object used to implement the embedding.
 
-    `training_data_` : array-like, shape (n_samples, n_features)
-        Stores the training data
+    training_data_ : array-like, shape (n_samples, n_features)
+        Stores the training data.
 
-    `nbrs_` : sklearn.neighbors.NearestNeighbors instance
+    nbrs_ : sklearn.neighbors.NearestNeighbors instance
         Stores nearest neighbors instance, including BallTree or KDtree
         if applicable.
 
-    `dist_matrix_` : array-like, shape (n_samples, n_samples)
-        Stores the geodesic distance matrix of training data
+    dist_matrix_ : array-like, shape (n_samples, n_samples)
+        Stores the geodesic distance matrix of training data.
 
     References
     ----------
 
-    [1] Tenenbaum, J.B.; De Silva, V.; & Langford, J.C. A global geometric
-        framework for nonlinear dimensionality reduction. Science 290 (5500)
+    .. [1] Tenenbaum, J.B.; De Silva, V.; & Langford, J.C. A global geometric
+           framework for nonlinear dimensionality reduction. Science 290 (5500)
     """
 
     def __init__(self, n_neighbors=5, n_components=2, eigen_solver='auto',
-            tol=0, max_iter=None, path_method='auto',
-            neighbors_algorithm='auto', out_dim=None):
-
-        if out_dim:
-            warnings.warn("Parameter ``out_dim`` was renamed to "
-                "``n_components`` and is now deprecated.", DeprecationWarning,
-                stacklevel=2)
-        self.out_dim = out_dim
+                 tol=0, max_iter=None, path_method='auto',
+                 neighbors_algorithm='auto', n_jobs=1):
         self.n_neighbors = n_neighbors
         self.n_components = n_components
         self.eigen_solver = eigen_solver
@@ -92,25 +97,23 @@ class Isomap(BaseEstimator):
         self.max_iter = max_iter
         self.path_method = path_method
         self.neighbors_algorithm = neighbors_algorithm
-        self.nbrs_ = NearestNeighbors(n_neighbors=n_neighbors,
-                                      algorithm=neighbors_algorithm)
+        self.n_jobs = n_jobs
 
     def _fit_transform(self, X):
-        if self.out_dim:
-            warnings.warn("Parameter ``out_dim`` was renamed to "
-                "``n_components`` and is now deprecated.", DeprecationWarning,
-                stacklevel=3)
-            self.n_components = self.out_dim
-            self.out_dim = None
+        X = check_array(X)
+        self.nbrs_ = NearestNeighbors(n_neighbors=self.n_neighbors,
+                                      algorithm=self.neighbors_algorithm,
+                                      n_jobs=self.n_jobs)
         self.nbrs_.fit(X)
         self.training_data_ = self.nbrs_._fit_X
         self.kernel_pca_ = KernelPCA(n_components=self.n_components,
                                      kernel="precomputed",
                                      eigen_solver=self.eigen_solver,
-                                     tol=self.tol, max_iter=self.max_iter)
+                                     tol=self.tol, max_iter=self.max_iter,
+                                     n_jobs=self.n_jobs)
 
         kng = kneighbors_graph(self.nbrs_, self.n_neighbors,
-                               mode='distance')
+                               mode='distance', n_jobs=self.n_jobs)
 
         self.dist_matrix_ = graph_shortest_path(kng,
                                                 method=self.path_method,
@@ -149,9 +152,9 @@ class Isomap(BaseEstimator):
 
         Parameters
         ----------
-        X : {array-like, sparse matrix, BallTree, cKDTree, NearestNeighbors}
+        X : {array-like, sparse matrix, BallTree, KDTree, NearestNeighbors}
             Sample data, shape = (n_samples, n_features), in the form of a
-            numpy array, sparse array, precomputed tree, or NearestNeighbors
+            numpy array, precomputed tree, or NearestNeighbors
             object.
 
         Returns
@@ -166,13 +169,13 @@ class Isomap(BaseEstimator):
 
         Parameters
         ----------
-        X: {array-like, sparse matrix, BallTree, cKDTree}
+        X : {array-like, sparse matrix, BallTree, KDTree}
             Training vector, where n_samples in the number of samples
             and n_features is the number of features.
 
         Returns
         -------
-        X_new: array-like, shape (n_samples, n_components)
+        X_new : array-like, shape (n_samples, n_components)
         """
         self._fit_transform(X)
         return self.embedding_
@@ -190,22 +193,23 @@ class Isomap(BaseEstimator):
 
         Parameters
         ----------
-        X: array-like, shape (n_samples, n_features)
+        X : array-like, shape (n_samples, n_features)
 
         Returns
         -------
-        X_new: array-like, shape (n_samples, n_components)
+        X_new : array-like, shape (n_samples, n_components)
         """
+        X = check_array(X)
         distances, indices = self.nbrs_.kneighbors(X, return_distance=True)
 
-        #Create the graph of shortest distances from X to self.training_data_
+        # Create the graph of shortest distances from X to self.training_data_
         # via the nearest neighbors of X.
-        #This can be done as a single array operation, but it potentially
+        # This can be done as a single array operation, but it potentially
         # takes a lot of memory.  To avoid that, use a loop:
         G_X = np.zeros((X.shape[0], self.training_data_.shape[0]))
         for i in range(X.shape[0]):
-            G_X[i] = np.min((self.dist_matrix_[indices[i]]
-                             + distances[i][:, None]), 0)
+            G_X[i] = np.min(self.dist_matrix_[indices[i]] +
+                            distances[i][:, None], 0)
 
         G_X **= 2
         G_X *= -0.5
