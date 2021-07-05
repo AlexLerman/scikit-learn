@@ -6,187 +6,217 @@ at which the fixe is no longer needed.
 # Authors: Emmanuelle Gouillart <emmanuelle.gouillart@normalesup.org>
 #          Gael Varoquaux <gael.varoquaux@normalesup.org>
 #          Fabian Pedregosa <fpedregosa@acm.org>
-#          Lars Buitinck <L.J.Buitinck@uva.nl>
-# License: BSD
+#          Lars Buitinck
+#
+# License: BSD 3 clause
 
-import collections
+from functools import update_wrapper
+from distutils.version import LooseVersion
+import functools
+
 import numpy as np
-from operator import itemgetter
+import scipy.sparse as sp
+import scipy
+import scipy.stats
+from scipy.sparse.linalg import lsqr as sparse_lsqr  # noqa
+from numpy.ma import MaskedArray as _MaskedArray  # TODO: remove in 1.0
+from .._config import config_context, get_config
 
-
-try:
-    Counter = collections.Counter
-except AttributeError:
-# Partial replacement for Python 2.7 collections.Counter
-    class Counter(collections.defaultdict):
-        def __init__(self, iterable=(), **kwargs):
-            super(Counter, self).__init__(int, **kwargs)
-            self.update(iterable)
-
-        def most_common(self):
-            return sorted(self.iteritems(), key=itemgetter(1), reverse=True)
-
-        def update(self, other):
-            """Adds counts for elements in other"""
-            if isinstance(other, self.__class__):
-                for x, n in other.iteritems():
-                    self[x] += n
-            else:
-                for x in other:
-                    self[x] += 1
-
-
-def lsqr(X, y, tol=1e-3):
-    import scipy.sparse.linalg as sp_linalg
-    from ..utils.extmath import safe_sparse_dot
-
-    if hasattr(sp_linalg, 'lsqr'):
-        # scipy 0.8 or greater
-        return sp_linalg.lsqr(X, y)
-    else:
-        n_samples, n_features = X.shape
-        if n_samples > n_features:
-            coef, _ = sp_linalg.cg(safe_sparse_dot(X.T, X),
-                                   safe_sparse_dot(X.T, y),
-                                   tol=tol)
-        else:
-            coef, _ = sp_linalg.cg(safe_sparse_dot(X, X.T), y, tol=tol)
-            coef = safe_sparse_dot(X.T, coef)
-
-        residues = y - safe_sparse_dot(X, coef)
-        return coef, None, None, residues
-
-
-def _unique(ar, return_index=False, return_inverse=False):
-    """A replacement for the np.unique that appeared in numpy 1.4.
-
-    While np.unique existed long before, keyword return_inverse was
-    only added in 1.4.
-    """
-    try:
-        ar = ar.flatten()
-    except AttributeError:
-        if not return_inverse and not return_index:
-            items = sorted(set(ar))
-            return np.asarray(items)
-        else:
-            ar = np.asarray(ar).flatten()
-
-    if ar.size == 0:
-        if return_inverse and return_index:
-            return ar, np.empty(0, np.bool), np.empty(0, np.bool)
-        elif return_inverse or return_index:
-            return ar, np.empty(0, np.bool)
-        else:
-            return ar
-
-    if return_inverse or return_index:
-        perm = ar.argsort()
-        aux = ar[perm]
-        flag = np.concatenate(([True], aux[1:] != aux[:-1]))
-        if return_inverse:
-            iflag = np.cumsum(flag) - 1
-            iperm = perm.argsort()
-            if return_index:
-                return aux[flag], perm[flag], iflag[iperm]
-            else:
-                return aux[flag], iflag[iperm]
-        else:
-            return aux[flag], perm[flag]
-
-    else:
-        ar.sort()
-        flag = np.concatenate(([True], ar[1:] != ar[:-1]))
-        return ar[flag]
-
-np_version = np.__version__.split('.')
-if int(np_version[0]) < 2 and int(np_version[1]) < 5:
-    unique = _unique
-else:
-    unique = np.unique
-
-
-def _copysign(x1, x2):
-    """Slow replacement for np.copysign, which was introduced in numpy 1.4"""
-    return np.abs(x1) * np.sign(x2)
-
-if not hasattr(np, 'copysign'):
-    copysign = _copysign
-else:
-    copysign = np.copysign
-
-
-def _in1d(ar1, ar2, assume_unique=False):
-    """Replacement for in1d that is provided for numpy >= 1.4"""
-    if not assume_unique:
-        ar1, rev_idx = unique(ar1, return_inverse=True)
-        ar2 = np.unique(ar2)
-    ar = np.concatenate((ar1, ar2))
-    # We need this to be a stable sort, so always use 'mergesort'
-    # here. The values from the first array should always come before
-    # the values from the second array.
-    order = ar.argsort(kind='mergesort')
-    sar = ar[order]
-    equal_adj = (sar[1:] == sar[:-1])
-    flag = np.concatenate((equal_adj, [False]))
-    indx = order.argsort(kind='mergesort')[:len(ar1)]
-
-    if assume_unique:
-        return flag[indx]
-    else:
-        return flag[indx][rev_idx]
-
-if not hasattr(np, 'in1d'):
-    in1d = _in1d
-else:
-    in1d = np.in1d
-
-
-def qr_economic(A, **kwargs):
-    """Compat function for the QR-decomposition in economic mode
-
-    Scipy 0.9 changed the keyword econ=True to mode='economic'
-    """
-    import scipy.linalg
-    # trick: triangular solve has introduced in 0.9
-    if hasattr(scipy.linalg, 'solve_triangular'):
-        return scipy.linalg.qr(A, mode='economic', **kwargs)
-    else:
-        return scipy.linalg.qr(A, econ=True, **kwargs)
-
-
-def savemat(file_name, mdict, oned_as="column", **kwargs):
-    """MATLAB-format output routine that is compatible with SciPy 0.7's.
-
-    0.7.2 (or .1?) added the oned_as keyword arg with 'column' as the default
-    value. It issues a warning if this is not provided, stating that "This will
-    change to 'row' in future versions."
-    """
-    import scipy.io
-    try:
-        return scipy.io.savemat(file_name, mdict, oned_as=oned_as, **kwargs)
-    except TypeError:
-        return scipy.io.savemat(file_name, mdict, **kwargs)
+from .deprecation import deprecated
 
 try:
-    from numpy import count_nonzero
+    from pkg_resources import parse_version  # type: ignore
 except ImportError:
-    def count_nonzero(X):
-        return len(np.flatnonzero(X))
+    # setuptools not installed
+    parse_version = LooseVersion  # type: ignore
 
-try:
-    # check whether np.dot supports the out argument
-    np.dot(np.zeros(1), np.zeros(1), out=np.empty(1))
 
-    # this is ok, just use the existing implementation
-    dot_out = np.dot
+np_version = parse_version(np.__version__)
+sp_version = parse_version(scipy.__version__)
 
-except (TypeError, ValueError):
-    # old version of np.dot that does not accept the third argument, define a
-    # pure python workaround:
-    def dot_out(a, b, out=None):
-        if out is not None:
-            out[:] = np.dot(a, b)
-            return out
-        else:
-            return np.dot(a, b)
+
+if sp_version >= parse_version('1.4'):
+    from scipy.sparse.linalg import lobpcg
+else:
+    # Backport of lobpcg functionality from scipy 1.4.0, can be removed
+    # once support for sp_version < parse_version('1.4') is dropped
+    # mypy error: Name 'lobpcg' already defined (possibly by an import)
+    from ..externals._lobpcg import lobpcg  # type: ignore  # noqa
+
+
+def _object_dtype_isnan(X):
+    return X != X
+
+
+# TODO: replace by copy=False, when only scipy > 1.1 is supported.
+def _astype_copy_false(X):
+    """Returns the copy=False parameter for
+    {ndarray, csr_matrix, csc_matrix}.astype when possible,
+    otherwise don't specify
+    """
+    if sp_version >= parse_version('1.1') or not sp.issparse(X):
+        return {'copy': False}
+    else:
+        return {}
+
+
+def _joblib_parallel_args(**kwargs):
+    """Set joblib.Parallel arguments in a compatible way for 0.11 and 0.12+
+
+    For joblib 0.11 this maps both ``prefer`` and ``require`` parameters to
+    a specific ``backend``.
+
+    Parameters
+    ----------
+
+    prefer : str in {'processes', 'threads'} or None
+        Soft hint to choose the default backend if no specific backend
+        was selected with the parallel_backend context manager.
+
+    require : 'sharedmem' or None
+        Hard condstraint to select the backend. If set to 'sharedmem',
+        the selected backend will be single-host and thread-based even
+        if the user asked for a non-thread based backend with
+        parallel_backend.
+
+    See joblib.Parallel documentation for more details
+    """
+    import joblib
+
+    if parse_version(joblib.__version__) >= parse_version('0.12'):
+        return kwargs
+
+    extra_args = set(kwargs.keys()).difference({'prefer', 'require'})
+    if extra_args:
+        raise NotImplementedError('unhandled arguments %s with joblib %s'
+                                  % (list(extra_args), joblib.__version__))
+    args = {}
+    if 'prefer' in kwargs:
+        prefer = kwargs['prefer']
+        if prefer not in ['threads', 'processes', None]:
+            raise ValueError('prefer=%s is not supported' % prefer)
+        args['backend'] = {'threads': 'threading',
+                           'processes': 'multiprocessing',
+                           None: None}[prefer]
+
+    if 'require' in kwargs:
+        require = kwargs['require']
+        if require not in [None, 'sharedmem']:
+            raise ValueError('require=%s is not supported' % require)
+        if require == 'sharedmem':
+            args['backend'] = 'threading'
+    return args
+
+
+class loguniform(scipy.stats.reciprocal):
+    """A class supporting log-uniform random variables.
+
+    Parameters
+    ----------
+    low : float
+        The minimum value
+    high : float
+        The maximum value
+
+    Methods
+    -------
+    rvs(self, size=None, random_state=None)
+        Generate log-uniform random variables
+
+    The most useful method for Scikit-learn usage is highlighted here.
+    For a full list, see
+    `scipy.stats.reciprocal
+    <https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.reciprocal.html>`_.
+    This list includes all functions of ``scipy.stats`` continuous
+    distributions such as ``pdf``.
+
+    Notes
+    -----
+    This class generates values between ``low`` and ``high`` or
+
+        low <= loguniform(low, high).rvs() <= high
+
+    The logarithmic probability density function (PDF) is uniform. When
+    ``x`` is a uniformly distributed random variable between 0 and 1, ``10**x``
+    are random variables that are equally likely to be returned.
+
+    This class is an alias to ``scipy.stats.reciprocal``, which uses the
+    reciprocal distribution:
+    https://en.wikipedia.org/wiki/Reciprocal_distribution
+
+    Examples
+    --------
+
+    >>> from sklearn.utils.fixes import loguniform
+    >>> rv = loguniform(1e-3, 1e1)
+    >>> rvs = rv.rvs(random_state=42, size=1000)
+    >>> rvs.min()  # doctest: +SKIP
+    0.0010435856341129003
+    >>> rvs.max()  # doctest: +SKIP
+    9.97403052786026
+    """
+
+
+@deprecated(
+    'MaskedArray is deprecated in version 0.23 and will be removed in version '
+    '1.0 (renaming of 0.25). Use numpy.ma.MaskedArray instead.'
+)
+class MaskedArray(_MaskedArray):
+    pass  # TODO: remove in 1.0
+
+
+def _take_along_axis(arr, indices, axis):
+    """Implements a simplified version of np.take_along_axis if numpy
+    version < 1.15"""
+    if np_version >= parse_version('1.15'):
+        return np.take_along_axis(arr=arr, indices=indices, axis=axis)
+    else:
+        if axis is None:
+            arr = arr.flatten()
+
+        if not np.issubdtype(indices.dtype, np.intp):
+            raise IndexError('`indices` must be an integer array')
+        if arr.ndim != indices.ndim:
+            raise ValueError(
+                "`indices` and `arr` must have the same number of dimensions")
+
+        shape_ones = (1,) * indices.ndim
+        dest_dims = (
+            list(range(axis)) +
+            [None] +
+            list(range(axis+1, indices.ndim))
+        )
+
+        # build a fancy index, consisting of orthogonal aranges, with the
+        # requested index inserted at the right location
+        fancy_index = []
+        for dim, n in zip(dest_dims, arr.shape):
+            if dim is None:
+                fancy_index.append(indices)
+            else:
+                ind_shape = shape_ones[:dim] + (-1,) + shape_ones[dim+1:]
+                fancy_index.append(np.arange(n).reshape(ind_shape))
+
+        fancy_index = tuple(fancy_index)
+        return arr[fancy_index]
+
+
+# remove when https://github.com/joblib/joblib/issues/1071 is fixed
+def delayed(function):
+    """Decorator used to capture the arguments of a function."""
+    @functools.wraps(function)
+    def delayed_function(*args, **kwargs):
+        return _FuncWrapper(function), args, kwargs
+    return delayed_function
+
+
+class _FuncWrapper:
+    """"Load the global configuration before calling the function."""
+    def __init__(self, function):
+        self.function = function
+        self.config = get_config()
+        update_wrapper(self, self.function)
+
+    def __call__(self, *args, **kwargs):
+        with config_context(**self.config):
+            return self.function(*args, **kwargs)

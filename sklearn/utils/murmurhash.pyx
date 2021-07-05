@@ -1,4 +1,4 @@
-"""Cython wrapper for MurmurHash3 non-cryptographic hash function
+"""Cython wrapper for MurmurHash3 non-cryptographic hash function.
 
 MurmurHash is an extensively tested and very fast hash function that has
 good distribution properties suitable for machine learning use cases
@@ -12,11 +12,19 @@ and can be found here:
 """
 # Author: Olivier Grisel <olivier.grisel@ensta.org>
 #
-# License: BSD Style.
+# License: BSD 3 clause
+
 
 cimport cython
 cimport numpy as np
 import numpy as np
+
+cdef extern from "src/MurmurHash3.h":
+    void MurmurHash3_x86_32(void *key, int len, np.uint32_t seed, void *out)
+    void MurmurHash3_x86_128(void *key, int len, np.uint32_t seed, void *out)
+    void MurmurHash3_x64_128 (void *key, int len, np.uint32_t seed, void *out)
+
+np.import_array()
 
 
 cpdef np.uint32_t murmurhash3_int_u32(int key, unsigned int seed):
@@ -51,7 +59,7 @@ cpdef np.int32_t murmurhash3_bytes_s32(bytes key, unsigned int seed):
 cpdef np.ndarray[np.uint32_t, ndim=1] murmurhash3_bytes_array_u32(
     np.ndarray[np.int32_t] key, unsigned int seed):
     """Compute 32bit murmurhash3 hashes of a key int array at seed."""
-    # TODO make it possible to pass preallocated ouput array
+    # TODO make it possible to pass preallocated output array
     cdef np.ndarray[np.uint32_t, ndim=1] out = np.zeros(key.size, np.uint32)
     cdef Py_ssize_t i
     for i in range(key.shape[0]):
@@ -63,7 +71,7 @@ cpdef np.ndarray[np.uint32_t, ndim=1] murmurhash3_bytes_array_u32(
 cpdef np.ndarray[np.int32_t, ndim=1] murmurhash3_bytes_array_s32(
     np.ndarray[np.int32_t] key, unsigned int seed):
     """Compute 32bit murmurhash3 hashes of a key int array at seed."""
-    # TODO make it possible to pass preallocated ouput array
+    # TODO make it possible to pass preallocated output array
     cdef np.ndarray[np.int32_t, ndim=1] out = np.zeros(key.size, np.int32)
     cdef Py_ssize_t i
     for i in range(key.shape[0]):
@@ -80,13 +88,13 @@ def murmurhash3_32(key, seed=0, positive=False):
 
     Parameters
     ----------
-    key: int32, bytes, unicode or ndarray with dtype int32
-        the physical object to hash
+    key : np.int32, bytes, unicode or ndarray of dtype=np.int32
+        The physical object to hash.
 
-    seed: int, optional default is 0
-        integer seed for the hashing algorithm.
+    seed : int, default=0
+        Integer seed for the hashing algorithm.
 
-    positive: boolean, optional default is False
+    positive : bool, default=False
         True: the results is casted to an unsigned int
           from 0 to 2 ** 32 - 1
         False: the results is casted to a signed int

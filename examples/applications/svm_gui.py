@@ -13,25 +13,29 @@ negative examples click the right button.
 If all examples are from the same class, it uses a one-class SVM.
 
 """
-from __future__ import division
 
-print __doc__
+print(__doc__)
 
 # Author: Peter Prettenhoer <peter.prettenhofer@gmail.com>
 #
-# License: BSD Style.
+# License: BSD 3 clause
 
 import matplotlib
 matplotlib.use('TkAgg')
-
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-from matplotlib.backends.backend_tkagg import NavigationToolbar2TkAgg
+try:
+    from matplotlib.backends.backend_tkagg import NavigationToolbar2Tk
+except ImportError:
+    # NavigationToolbar2TkAgg was deprecated in matplotlib 2.2
+    from matplotlib.backends.backend_tkagg import (
+        NavigationToolbar2TkAgg as NavigationToolbar2Tk
+    )
 from matplotlib.figure import Figure
 from matplotlib.contour import ContourSet
 
-import Tkinter as Tk
 import sys
 import numpy as np
+import tkinter as Tk
 
 from sklearn import svm
 from sklearn.datasets import dump_svmlight_file
@@ -40,7 +44,7 @@ y_min, y_max = -50, 50
 x_min, x_max = -50, 50
 
 
-class Model(object):
+class Model:
     """The Model which hold the data. It implements the
     observable in the observer pattern and notifies the
     registered observers on change event.
@@ -72,7 +76,7 @@ class Model(object):
         dump_svmlight_file(X, y, file)
 
 
-class Controller(object):
+class Controller:
     def __init__(self, model):
         self.model = model
         self.kernel = Tk.IntVar()
@@ -81,7 +85,7 @@ class Controller(object):
         self.fitted = False
 
     def fit(self):
-        print "fit the model"
+        print("fit the model")
         train = np.array(self.model.data)
         X = train[:, 0:2]
         y = train[:, 2]
@@ -93,14 +97,14 @@ class Controller(object):
         kernel_map = {0: "linear", 1: "rbf", 2: "poly"}
         if len(np.unique(y)) == 1:
             clf = svm.OneClassSVM(kernel=kernel_map[self.kernel.get()],
-                      gamma=gamma, coef0=coef0, degree=degree)
+                                  gamma=gamma, coef0=coef0, degree=degree)
             clf.fit(X)
         else:
             clf = svm.SVC(kernel=kernel_map[self.kernel.get()], C=C,
                           gamma=gamma, coef0=coef0, degree=degree)
             clf.fit(X, y)
         if hasattr(clf, 'score'):
-            print "Accuracy:", clf.score(X, y) * 100
+            print("Accuracy:", clf.score(X, y) * 100)
         X1, X2, Z = self.decision_surface(clf)
         self.model.clf = clf
         self.model.set_surface((X1, X2, Z))
@@ -135,7 +139,7 @@ class Controller(object):
             self.fit()
 
 
-class View(object):
+class View:
     """Test docstring. """
     def __init__(self, root, controller):
         f = Figure()
@@ -145,11 +149,15 @@ class View(object):
         ax.set_xlim((x_min, x_max))
         ax.set_ylim((y_min, y_max))
         canvas = FigureCanvasTkAgg(f, master=root)
-        canvas.show()
+        try:
+            canvas.draw()
+        except AttributeError:
+            # support for matplotlib (1.*)
+            canvas.show()
         canvas.get_tk_widget().pack(side=Tk.TOP, fill=Tk.BOTH, expand=1)
         canvas._tkcanvas.pack(side=Tk.TOP, fill=Tk.BOTH, expand=1)
         canvas.mpl_connect('button_press_event', self.onclick)
-        toolbar = NavigationToolbar2TkAgg(canvas, root)
+        toolbar = NavigationToolbar2Tk(canvas, root)
         toolbar.update()
         self.controllbar = ControllBar(root, controller)
         self.f = f
@@ -162,8 +170,8 @@ class View(object):
 
     def plot_kernels(self):
         self.ax.text(-50, -60, "Linear: $u^T v$")
-        self.ax.text(-20, -60, "RBF: $\exp (-\gamma \| u-v \|^2)$")
-        self.ax.text(10, -60, "Poly: $(\gamma \, u^T v + r)^d$")
+        self.ax.text(-20, -60, r"RBF: $\exp (-\gamma \| u-v \|^2)$")
+        self.ax.text(10, -60, r"Poly: $(\gamma \, u^T v + r)^d$")
 
     def onclick(self, event):
         if event.xdata and event.ydata:
@@ -182,7 +190,7 @@ class View(object):
 
     def update(self, event, model):
         if event == "examples_loaded":
-            for i in xrange(len(model.data)):
+            for i in range(len(model.data)):
                 self.update_example(model, i)
 
         if event == "example_added":
@@ -233,17 +241,15 @@ class View(object):
                                                  linestyles=linestyles))
         elif type == 1:
             self.contours.append(self.ax.contourf(X1, X2, Z, 10,
-                                             cmap=matplotlib.cm.bone,
-                                             origin='lower',
-                                             alpha=0.85))
-            self.contours.append(self.ax.contour(X1, X2, Z, [0.0],
-                                                 colors='k',
+                                                  cmap=matplotlib.cm.bone,
+                                                  origin='lower', alpha=0.85))
+            self.contours.append(self.ax.contour(X1, X2, Z, [0.0], colors='k',
                                                  linestyles=['solid']))
         else:
             raise ValueError("surface type unknown")
 
 
-class ControllBar(object):
+class ControllBar:
     def __init__(self, root, controller):
         fm = Tk.Frame(root)
         kernel_group = Tk.Frame(fm)
@@ -308,8 +314,8 @@ def get_parser():
     from optparse import OptionParser
     op = OptionParser()
     op.add_option("--output",
-              action="store", type="str", dest="output",
-              help="Path where to dump data.")
+                  action="store", type="str", dest="output",
+                  help="Path where to dump data.")
     return op
 
 

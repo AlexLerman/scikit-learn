@@ -1,7 +1,7 @@
 import os
 from os.path import join
 
-from numpy.distutils.system_info import get_info
+from sklearn._build_utils import gen_from_templates
 
 
 def configuration(parent_package='', top_path=None):
@@ -10,57 +10,67 @@ def configuration(parent_package='', top_path=None):
 
     config = Configuration('utils', parent_package, top_path)
 
-    config.add_subpackage('sparsetools')
-
-    # cd fast needs CBLAS
-    blas_info = get_info('blas_opt', 0)
-    if (not blas_info) or (
-        ('NO_ATLAS_INFO', 1) in blas_info.get('define_macros', [])):
-        cblas_libs = ['cblas']
-        blas_info.pop('libraries', None)
-    else:
-        cblas_libs = blas_info.pop('libraries', [])
-
     libraries = []
     if os.name == 'posix':
         libraries.append('m')
-        cblas_libs.append('m')
 
-    config.add_extension('arraybuilder',
-         sources=['arraybuilder.c'])
+    config.add_extension('sparsefuncs_fast',
+                         sources=['sparsefuncs_fast.pyx'],
+                         libraries=libraries)
 
-    config.add_extension('sparsefuncs',
-         sources=['sparsefuncs.c'],
-         libraries=libraries)
+    config.add_extension('_cython_blas',
+                         sources=['_cython_blas.pyx'],
+                         libraries=libraries)
 
     config.add_extension('arrayfuncs',
-         sources=['arrayfuncs.c'],
-         depends=[join('src', 'cholesky_delete.c')],
-         libraries=cblas_libs,
-         include_dirs=[join('..', 'src', 'cblas'),
-                       numpy.get_include(),
-                       blas_info.pop('include_dirs', [])],
-         extra_compile_args=blas_info.pop('extra_compile_args', []),
-         **blas_info
-         )
+                         sources=['arrayfuncs.pyx'],
+                         include_dirs=[numpy.get_include()],
+                         libraries=libraries)
 
-    config.add_extension(
-        'murmurhash',
-        sources=['murmurhash.c', join('src', 'MurmurHash3.cpp')],
-        include_dirs=['src'])
+    config.add_extension('murmurhash',
+                         sources=['murmurhash.pyx', join(
+                             'src', 'MurmurHash3.cpp')],
+                         include_dirs=['src'])
 
     config.add_extension('graph_shortest_path',
-         sources=['graph_shortest_path.c'],
-         include_dirs=[numpy.get_include()])
+                         sources=['graph_shortest_path.pyx'],
+                         include_dirs=[numpy.get_include()])
 
-    config.add_extension('seq_dataset',
-         sources=['seq_dataset.c'],
-         include_dirs=[numpy.get_include()])
+    config.add_extension('_fast_dict',
+                         sources=['_fast_dict.pyx'],
+                         language="c++",
+                         include_dirs=[numpy.get_include()],
+                         libraries=libraries)
 
-    config.add_extension('weight_vector',
-         sources=['weight_vector.c'],
-         include_dirs=[numpy.get_include()],
-         libraries=libraries)
+    config.add_extension('_openmp_helpers',
+                         sources=['_openmp_helpers.pyx'],
+                         libraries=libraries)
+
+    # generate _seq_dataset from template
+    templates = ['sklearn/utils/_seq_dataset.pyx.tp',
+                 'sklearn/utils/_seq_dataset.pxd.tp']
+    gen_from_templates(templates, top_path)
+
+    config.add_extension('_seq_dataset',
+                         sources=['_seq_dataset.pyx'],
+                         include_dirs=[numpy.get_include()])
+
+    config.add_extension('_weight_vector',
+                         sources=['_weight_vector.pyx'],
+                         include_dirs=[numpy.get_include()],
+                         libraries=libraries)
+
+    config.add_extension("_random",
+                         sources=["_random.pyx"],
+                         include_dirs=[numpy.get_include()],
+                         libraries=libraries)
+
+    config.add_extension("_logistic_sigmoid",
+                         sources=["_logistic_sigmoid.pyx"],
+                         include_dirs=[numpy.get_include()],
+                         libraries=libraries)
+
+    config.add_subpackage('tests')
 
     return config
 

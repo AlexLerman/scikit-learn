@@ -1,18 +1,18 @@
 
-===============================================================================
-Statistical learning: the setting and the estimator object in the scikit-learn
-===============================================================================
+==========================================================================
+Statistical learning: the setting and the estimator object in scikit-learn
+==========================================================================
 
 Datasets
 =========
 
-The `scikit-learn` deals with learning information from one or more
+Scikit-learn deals with learning information from one or more
 datasets that are represented as 2D arrays. They can be understood as a
 list of multi-dimensional observations. We say that the first axis of
 these arrays is the **samples** axis, while the second is the
 **features** axis.
 
-.. topic:: A simple example shipped with the scikit: iris dataset
+.. topic:: A simple example shipped with scikit-learn: iris dataset
 
     ::
 
@@ -24,17 +24,12 @@ these arrays is the **samples** axis, while the second is the
 
     It is made of 150 observations of irises, each described by 4
     features: their sepal and petal length and width, as detailed in
-    `iris.DESCR`.
+    ``iris.DESCR``.
 
-When the data is not intially in the `(n_samples, n_features)` shape, it
-needs to be preprocessed to be used by the scikit.
+When the data is not initially in the ``(n_samples, n_features)`` shape, it
+needs to be preprocessed in order to be used by scikit-learn.
 
-.. topic:: An example of reshaping data: the digits dataset 
-
-    .. image:: ../../auto_examples/datasets/images/plot_digits_last_image_1.png
-        :target: ../../auto_examples/datasets/plot_digits_last_image.html
-        :align: right
-        :scale: 60
+.. topic:: An example of reshaping data would be the digits dataset
 
     The digits dataset is made of 1797 8x8 images of hand-written
     digits ::
@@ -42,15 +37,21 @@ needs to be preprocessed to be used by the scikit.
         >>> digits = datasets.load_digits()
         >>> digits.images.shape
         (1797, 8, 8)
-        >>> import pylab as pl #doctest: +SKIP
-        >>> pl.imshow(digits.images[-1], cmap=pl.cm.gray_r) #doctest: +SKIP
+        >>> import matplotlib.pyplot as plt #doctest: +SKIP
+        >>> plt.imshow(digits.images[-1],
+        ...            cmap=plt.cm.gray_r) #doctest: +SKIP
         <matplotlib.image.AxesImage object at ...>
+    
+    .. image:: /auto_examples/datasets/images/sphx_glr_plot_digits_last_image_001.png
+        :target: ../../auto_examples/datasets/plot_digits_last_image.html
+        :align: center
 
-    To use this dataset with the scikit, we transform each 8x8 image in a
+    To use this dataset with scikit-learn, we transform each 8x8 image into a
     feature vector of length 64 ::
 
-        >>> data = digits.images.reshape((digits.images.shape[0], -1))
-
+        >>> data = digits.images.reshape(
+        ...     (digits.images.shape[0], -1)
+        ... )
 
 Estimators objects
 ===================
@@ -66,14 +67,18 @@ Estimators objects
    ...          pass
    >>> estimator = Estimator()
 
-**Fitting data**: The core object of the `scikit-learn` is the
-`estimator` object. All estimator objects expose a `fit` method, that
-takes a dataset (2D array)::
+**Fitting data**: the main API implemented by scikit-learn is that of the
+`estimator`. An estimator is any object that learns from data;
+it may be a classification, regression or clustering algorithm or
+a *transformer* that extracts/filters useful features from raw data.
+
+All estimator objects expose a ``fit`` method that takes a dataset
+(usually a 2-d array):
 
     >>> estimator.fit(data)
 
 **Estimator parameters**: All the parameters of an estimator can be set
-when it is instanciated, or by modifying the corresponding attribute::
+when it is instantiated or by modifying the corresponding attribute::
 
     >>> estimator = Estimator(param1=1, param2=2)
     >>> estimator.param1
@@ -85,5 +90,3 @@ parameters are attributes of the estimator object ending by an
 underscore::
 
     >>> estimator.estimated_param_ #doctest: +SKIP
-
-

@@ -1,107 +1,85 @@
+import itertools
+
 import numpy as np
+import pytest
 from numpy.testing import assert_array_almost_equal
+from sklearn.neighbors._ball_tree import BallTree
+from sklearn.neighbors import DistanceMetric
+from sklearn.utils import check_random_state
+from sklearn.utils.validation import check_array
+from sklearn.utils._testing import _convert_container
 
-from scipy.spatial import cKDTree
+rng = np.random.RandomState(10)
+V_mahalanobis = rng.rand(3, 3)
+V_mahalanobis = np.dot(V_mahalanobis, V_mahalanobis.T)
 
-from sklearn import neighbors
+DIMENSION = 3
 
-# Note: simple tests of BallTree.query() and BallTree.query_radius()
-# are contained within the tests of test_neighbors.py
+METRICS = {'euclidean': {},
+           'manhattan': {},
+           'minkowski': dict(p=3),
+           'chebyshev': {},
+           'seuclidean': dict(V=rng.random_sample(DIMENSION)),
+           'wminkowski': dict(p=3, w=rng.random_sample(DIMENSION)),
+           'mahalanobis': dict(V=V_mahalanobis)}
 
-rng = np.random.RandomState(0)
+DISCRETE_METRICS = ['hamming',
+                    'canberra',
+                    'braycurtis']
 
-
-def test_warning_flag(n_samples=100, n_features=3, k=3):
-    """test that discarding identical distances triggers warning flag"""
-    X = rng.random_sample(size=(n_samples, n_features))
-    q = rng.random_sample(size=n_features)
-    bt = neighbors.BallTree(X[:-1], leaf_size=5)
-    dist, ind = bt.query(q, k=k)
-
-    # make the last point identical to the furthest neighbor
-    # querying this should set warning_flag to True
-    X[-1:] = X[ind[0, k - 1]]
-
-    bt = neighbors.BallTree(X, leaf_size=5)
-    dist, ind = bt.query(q, k=k)
-
-    assert bt.warning_flag
-
-    # make the last point identical to the closest neighbor
-    # though the distance is identical, there is no ambiguity, so there
-    # should be no warning.  If k==1, this should not be done
-    if k > 1:
-        X[-1:] = X[ind[0, 0]]
-
-        bt = neighbors.BallTree(X, leaf_size=5)
-        dist, ind = bt.query(q, k=k)
-
-        assert not bt.warning_flag
+BOOLEAN_METRICS = ['matching', 'jaccard', 'dice', 'kulsinski',
+                   'rogerstanimoto', 'russellrao', 'sokalmichener',
+                   'sokalsneath']
 
 
-def test_ball_tree_query_radius(n_samples=100, n_features=10):
-    X = 2 * rng.random_sample(size=(n_samples, n_features)) - 1
-    query_pt = np.zeros(n_features, dtype=float)
-
-    eps = 1E-15  # roundoff error can cause test to fail
-    bt = neighbors.BallTree(X, leaf_size=5)
-    rad = np.sqrt(((X - query_pt) ** 2).sum(1))
-
-    for r in np.linspace(rad[0], rad[-1], 100):
-        ind = bt.query_radius(query_pt, r + eps)[0]
-        i = np.where(rad <= r + eps)[0]
-
-        ind.sort()
-        i.sort()
-
-        assert np.all(i == ind)
+def brute_force_neighbors(X, Y, k, metric, **kwargs):
+    X, Y = check_array(X), check_array(Y)
+    D = DistanceMetric.get_metric(metric, **kwargs).pairwise(Y, X)
+    ind = np.argsort(D, axis=1)[:, :k]
+    dist = D[np.arange(Y.shape[0])[:, None], ind]
+    return dist, ind
 
 
-def test_ball_tree_query_radius_distance(n_samples=100, n_features=10):
-    X = 2 * rng.random_sample(size=(n_samples, n_features)) - 1
-    query_pt = np.zeros(n_features, dtype=float)
+@pytest.mark.parametrize(
+    'metric',
+    itertools.chain(BOOLEAN_METRICS, DISCRETE_METRICS)
+)
+@pytest.mark.parametrize("array_type", ["list", "array"])
+def test_ball_tree_query_metrics(metric, array_type):
+    rng = check_random_state(0)
+    if metric in BOOLEAN_METRICS:
+        X = rng.random_sample((40, 10)).round(0)
+        Y = rng.random_sample((10, 10)).round(0)
+    elif metric in DISCRETE_METRICS:
+        X = (4 * rng.random_sample((40, 10))).round(0)
+        Y = (4 * rng.random_sample((10, 10))).round(0)
+    X = _convert_container(X, array_type)
+    Y = _convert_container(Y, array_type)
 
-    eps = 1E-15  # roundoff error can cause test to fail
-    bt = neighbors.BallTree(X, leaf_size=5)
-    rad = np.sqrt(((X - query_pt) ** 2).sum(1))
+    k = 5
 
-    for r in np.linspace(rad[0], rad[-1], 100):
-        ind, dist = bt.query_radius(query_pt, r + eps, return_distance=True)
-
-        ind = ind[0]
-        dist = dist[0]
-
-        d = np.sqrt(((query_pt - X[ind]) ** 2).sum(1))
-
-        assert_array_almost_equal(d, dist)
-
-
-def test_ball_tree_pickle():
-    import pickle
-    X = rng.random_sample(size=(10, 3))
-    bt1 = neighbors.BallTree(X, leaf_size=1)
-    ind1, dist1 = bt1.query(X)
-    for protocol in (0, 1, 2):
-        s = pickle.dumps(bt1, protocol=protocol)
-        bt2 = pickle.loads(s)
-        ind2, dist2 = bt2.query(X)
-        assert np.all(ind1 == ind2)
-        assert_array_almost_equal(dist1, dist2)
+    bt = BallTree(X, leaf_size=1, metric=metric)
+    dist1, ind1 = bt.query(Y, k)
+    dist2, ind2 = brute_force_neighbors(X, Y, k, metric)
+    assert_array_almost_equal(dist1, dist2)
 
 
-def test_ball_tree_p_distance():
-    X = rng.random_sample(size=(100, 5))
+def test_query_haversine():
+    rng = check_random_state(0)
+    X = 2 * np.pi * rng.random_sample((40, 2))
+    bt = BallTree(X, leaf_size=1, metric='haversine')
+    dist1, ind1 = bt.query(X, k=5)
+    dist2, ind2 = brute_force_neighbors(X, X, k=5, metric='haversine')
 
-    for p in (1, 2, 3, 4, np.inf):
-        bt = neighbors.BallTree(X, leaf_size=10, p=p)
-        kdt = cKDTree(X, leafsize=10)
-
-        dist_bt, ind_bt = bt.query(X, k=5)
-        dist_kd, ind_kd = kdt.query(X, k=5, p=p)
-
-        assert_array_almost_equal(dist_bt, dist_kd)
+    assert_array_almost_equal(dist1, dist2)
+    assert_array_almost_equal(ind1, ind2)
 
 
-if __name__ == '__main__':
-    import nose
-    nose.runmodule()
+def test_array_object_type():
+    """Check that we do not accept object dtype array."""
+    X = np.array([(1, 2, 3), (2, 5), (5, 5, 1, 2)], dtype=object)
+    with pytest.raises(
+        ValueError,
+        match="setting an array element with a sequence"
+    ):
+        BallTree(X)

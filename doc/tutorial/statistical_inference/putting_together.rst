@@ -8,52 +8,38 @@ Putting it all together
 Pipelining
 ============
 
-We have seen that some estimators can transform data, and some estimators
-can predict variables. We can create combined estimators:
+We have seen that some estimators can transform data and that some estimators
+can predict variables. We can also create combined estimators:
 
-.. image:: ../../auto_examples/images/plot_digits_pipe_1.png
-   :target: ../../auto_examples/plot_digits_pipe.html
+.. literalinclude:: ../../auto_examples/compose/plot_digits_pipe.py
+    :lines: 23-63
+
+.. image:: ../../auto_examples/compose/images/sphx_glr_plot_digits_pipe_001.png
+   :target: ../../auto_examples/compose/plot_digits_pipe.html
    :scale: 65
-   :align: right
-
-.. literalinclude:: ../../auto_examples/plot_digits_pipe.py
-    :lines: 24-67
-
-
-
+   :align: center
 
 Face recognition with eigenfaces
 =================================
 
 The dataset used in this example is a preprocessed excerpt of the
-"Labeled Faces in the Wild", aka LFW_:
+"Labeled Faces in the Wild", also known as LFW_:
 
   http://vis-www.cs.umass.edu/lfw/lfw-funneled.tgz (233MB)
 
 .. _LFW: http://vis-www.cs.umass.edu/lfw/
 
-.. literalinclude:: ../../auto_examples/applications/face_recognition.py
+.. literalinclude:: ../../auto_examples/applications/plot_face_recognition.py
 
-.. |prediction| image:: ../../images/plot_face_recognition_1.png
-   :scale: 50
- 
-.. |eigenfaces| image:: ../../images/plot_face_recognition_2.png
+.. figure:: ../../images/plot_face_recognition_1.png
    :scale: 50
 
-.. list-table::
-   :class: centered
+   **Prediction**
 
-   *
+.. figure:: ../../images/plot_face_recognition_2.png
+   :scale: 50
 
-     - |prediction|
-
-     - |eigenfaces|
-
-   * 
-
-     - **Prediction**
-
-     - **Eigenfaces**
+   **Eigenfaces**
 
 Expected results for the top 5 most represented people in the dataset::
 
@@ -71,10 +57,6 @@ Expected results for the top 5 most represented people in the dataset::
 Open problem: Stock Market Structure
 =====================================
 
-Can we predict the variation in stock prices for Google?
+Can we predict the variation in stock prices for Google over a given time frame?
 
 :ref:`stock_market`
-
-
-
-

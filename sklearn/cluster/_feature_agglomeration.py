@@ -8,36 +8,47 @@ agglomeration.
 import numpy as np
 
 from ..base import TransformerMixin
-from ..utils import array2d
-
+from ..utils.validation import check_is_fitted
+from scipy.sparse import issparse
 
 ###############################################################################
 # Mixin class for feature agglomeration.
+
 
 class AgglomerationTransform(TransformerMixin):
     """
     A class for feature agglomeration via the transform interface
     """
 
-    def transform(self, X, pooling_func=np.mean):
+    def transform(self, X):
         """
         Transform a new matrix using the built clustering
 
         Parameters
-        ---------
-        X : array-like, shape = [n_samples, n_features]
+        ----------
+        X : array-like of shape (n_samples, n_features) or (n_samples,)
             A M by N array of M observations in N dimensions or a length
             M array of M one-dimensional observations.
 
-        pooling_func : a function that takes an array of shape = [M, N] and
-                       return an array of value of size M.
-                       Defaut is np.mean
+        Returns
+        -------
+        Y : ndarray of shape (n_samples, n_clusters) or (n_clusters,)
+            The pooled values for each feature cluster.
         """
-        X = np.asarray(X)
-        nX = []
-        for l in np.unique(self.labels_):
-            nX.append(pooling_func(X[:, self.labels_ == l], axis=1))
-        return np.array(nX).T
+        check_is_fitted(self)
+
+        X = self._validate_data(X, reset=False)
+        if self.pooling_func == np.mean and not issparse(X):
+            size = np.bincount(self.labels_)
+            n_samples = X.shape[0]
+            # a fast way to compute the mean of grouped features
+            nX = np.array([np.bincount(self.labels_, X[i, :]) / size
+                          for i in range(n_samples)])
+        else:
+            nX = [self.pooling_func(X[:, self.labels_ == l], axis=1)
+                  for l in np.unique(self.labels_)]
+            nX = np.array(nX).T
+        return nX
 
     def inverse_transform(self, Xred):
         """
@@ -47,25 +58,16 @@ class AgglomerationTransform(TransformerMixin):
 
         Parameters
         ----------
-        Xred : array of size k
+        Xred : array-like of shape (n_samples, n_clusters) or (n_clusters,)
             The values to be assigned to each cluster of samples
 
         Returns
         -------
-        X : array of size nb_samples
-            A vector of size nb_samples with the values of Xred assigned to
+        X : ndarray of shape (n_samples, n_features) or (n_features,)
+            A vector of size n_samples with the values of Xred assigned to
             each of the cluster of samples.
         """
-        if np.size((Xred.shape)) == 1:
-            X = np.zeros([self.labels_.shape[0]])
-        else:
-            X = np.zeros([Xred.shape[0], self.labels_.shape[0]])
-        unil = np.unique(self.labels_)
-        for i in range(len(unil)):
-            if np.size((Xred.shape)) == 1:
-                X[self.labels_ == unil[i]] = Xred[i]
-            else:
-                ncol = np.sum(self.labels_ == unil[i])
-                X[:, self.labels_ == unil[i]] = np.tile(array2d(Xred[:, i]).T,
-                                                        ncol)
-        return X
+        check_is_fitted(self)
+
+        unil, inverse = np.unique(self.labels_, return_inverse=True)
+        return Xred[..., inverse]

@@ -1,59 +1,68 @@
-# simple makefile to simplify repetetive build env management tasks under posix
+# simple makefile to simplify repetitive build env management tasks under posix
 
 # caution: testing won't work on windows, see README
 
 PYTHON ?= python
 CYTHON ?= cython
-NOSETESTS ?= nosetests
+PYTEST ?= pytest
 CTAGS ?= ctags
 
+# skip doctests on 32bit python
+BITS := $(shell python -c 'import struct; print(8 * struct.calcsize("P"))')
+
 all: clean inplace test
-
-clean-pyc:
-	find . -name "*.pyc" | xargs rm -f
-
-clean-so:
-	find . -name "*.so" | xargs rm -f
-	find . -name "*.pyd" | xargs rm -f
-
-clean-build:
-	rm -rf build
 
 clean-ctags:
 	rm -f tags
 
-clean: clean-build clean-pyc clean-so clean-ctags
+clean: clean-ctags
+	$(PYTHON) setup.py clean
+	rm -rf dist
 
 in: inplace # just a shortcut
 inplace:
 	$(PYTHON) setup.py build_ext -i
 
 test-code: in
-	$(NOSETESTS) -s sklearn
+	$(PYTEST) --showlocals -v sklearn --durations=20
+test-sphinxext:
+	$(PYTEST) --showlocals -v doc/sphinxext/
 test-doc:
-	$(NOSETESTS) -s --with-doctest --doctest-tests --doctest-extension=rst \
-	--doctest-extension=inc --doctest-fixtures=_fixture doc/ doc/modules/ \
-	doc/developers doc/tutorial/basic doc/tutorial/statistical_inference
+ifeq ($(BITS),64)
+	$(PYTEST) $(shell find doc -name '*.rst' | sort)
+endif
+test-code-parallel: in
+	$(PYTEST) -n auto --showlocals -v sklearn --durations=20
 
 test-coverage:
-	$(NOSETESTS) -s --with-coverage --cover-html --cover-html-dir=coverage \
-	--cover-package=sklearn sklearn
+	rm -rf coverage .coverage
+	$(PYTEST) sklearn --showlocals -v --cov=sklearn --cov-report=html:coverage
+test-coverage-parallel:
+	rm -rf coverage .coverage .coverage.*
+	$(PYTEST) sklearn -n auto --showlocals -v --cov=sklearn --cov-report=html:coverage
 
-test: test-code test-doc
+test: test-code test-sphinxext test-doc
 
 trailing-spaces:
-	find . -name "*.py" | xargs perl -pi -e 's/[ \t]*$$//'
+	find sklearn -name "*.py" -exec perl -pi -e 's/[ \t]*$$//' {} \;
 
 cython:
-	find sklearn -name "*.pyx" | xargs $(CYTHON)
+	python setup.py build_src
 
 ctags:
 	# make tags for symbol based navigation in emacs and vim
 	# Install with: sudo apt-get install exuberant-ctags
-	$(CTAGS) -R *
+	$(CTAGS) --python-kinds=-i -R sklearn
 
 doc: inplace
-	make -C doc html
+	$(MAKE) -C doc html
 
 doc-noplot: inplace
-	make -C doc html-noplot
+	$(MAKE) -C doc html-noplot
+
+code-analysis:
+	flake8 sklearn | grep -v __init__ | grep -v external
+	pylint -E -i y sklearn/ -d E1103,E0611,E1101
+
+flake8-diff:
+	git diff upstream/master -u -- "*.py" | flake8 --diff

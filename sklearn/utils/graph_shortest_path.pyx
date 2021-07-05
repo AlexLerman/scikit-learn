@@ -1,3 +1,6 @@
+# Author: Jake Vanderplas  -- <vanderplas@astro.washington.edu>
+# License: BSD 3 clause, (C) 2011
+
 """
 Routines for performing shortest-path graph searches
 
@@ -5,9 +8,6 @@ The main interface is in the function `graph_shortest_path`.  This
 calls cython routines that compute the shortest path using either
 the Floyd-Warshall algorithm, or Dykstra's algorithm with Fibonacci Heaps.
 """
-
-# Author: Jake Vanderplas  -- <vanderplas@astro.washington.edu>
-# License: BSD, (C) 2011
 
 import numpy as np
 cimport numpy as np
@@ -17,6 +17,8 @@ from scipy.sparse import csr_matrix, isspmatrix, isspmatrix_csr
 cimport cython
 
 from libc.stdlib cimport malloc, free
+
+np.import_array()
 
 DTYPE = np.float64
 ctypedef np.float64_t DTYPE_t
@@ -99,7 +101,7 @@ cdef np.ndarray floyd_warshall(np.ndarray[DTYPE_t, ndim=2, mode='c'] graph,
     Parameters
     ----------
     graph : ndarray
-        on input, graph is the matrix of distances betweeen connected points.
+        on input, graph is the matrix of distances between connected points.
         unconnected points have distance=0
         on exit, graph is overwritten with the output
     directed : bool, default = False
@@ -114,7 +116,7 @@ cdef np.ndarray floyd_warshall(np.ndarray[DTYPE_t, ndim=2, mode='c'] graph,
         the matrix of shortest paths between points.
         If no path exists, the path length is zero
     """
-    cdef int N = graph.shape[0]
+    cdef unsigned int N = graph.shape[0]
     assert graph.shape[1] == N
 
     cdef unsigned int i, j, k, m
@@ -162,14 +164,14 @@ cdef np.ndarray dijkstra(dist_matrix,
     Parameters
     ----------
     graph : array or sparse matrix
-        dist_matrix is the matrix of distances betweeen connected points.
+        dist_matrix is the matrix of distances between connected points.
         unconnected points have distance=0.  It will be converted to
         a csr_matrix internally
     indptr :
         These arrays encode a distance matrix in compressed-sparse-row
         format.
     graph : ndarray
-        on input, graph is the matrix of distances betweeen connected points.
+        on input, graph is the matrix of distances between connected points.
         unconnected points have distance=0
         on exit, graph is overwritten with the output
     directed : bool, default = False
@@ -213,7 +215,7 @@ cdef np.ndarray dijkstra(dist_matrix,
                                       graph, &heap, nodes)
     else:
         #use the csr -> csc sparse matrix conversion to quickly get
-        # both directions of neigbors
+        # both directions of neighbors
         dist_matrix_T = dist_matrix.T.tocsr()
 
         distances2 = np.asarray(dist_matrix_T.data,
@@ -377,7 +379,9 @@ cdef void link(FibonacciHeap* heap, FibonacciNode* node):
     #              - node is a valid pointer
     #              - node is already within heap
 
-    cdef FibonacciNode *linknode, *parent, *child
+    cdef FibonacciNode *linknode
+    cdef FibonacciNode *parent
+    cdef FibonacciNode *child
 
     if heap.roots_by_rank[node.rank] == NULL:
         heap.roots_by_rank[node.rank] = node
@@ -398,7 +402,9 @@ cdef void link(FibonacciHeap* heap, FibonacciNode* node):
 cdef FibonacciNode* remove_min(FibonacciHeap* heap):
     # Assumptions: - heap is a valid pointer
     #              - heap.min_node is a valid pointer
-    cdef FibonacciNode *temp, *temp_right, *out
+    cdef FibonacciNode *temp
+    cdef FibonacciNode *temp_right
+    cdef FibonacciNode *out
     cdef unsigned int i
 
     # make all min_node children into root nodes
@@ -488,17 +494,19 @@ cdef void dijkstra_directed_one_row(
     graph : array, shape = (N,N)
         on return, graph[i_node] contains the path lengths from
         i_node to each target
-    heap: the Fibonacci heap object to use
+    heap : the Fibonacci heap object to use
     nodes : the array of nodes to use
     """
     cdef unsigned int N = graph.shape[0]
-    cdef unsigned int i
-    cdef FibonacciNode *v, *current_neighbor
+    cdef unsigned int i_N
+    cdef ITYPE_t i
+    cdef FibonacciNode *v
+    cdef FibonacciNode *current_neighbor
     cdef DTYPE_t dist
 
     # initialize nodes
-    for i from 0 <= i < N:
-        initialize_node(&nodes[i], i)
+    for i_N in range(0, N):
+        initialize_node(&nodes[i_N], i_N)
 
     heap.min_node = NULL
     insert_node(heap, &nodes[i_node])
@@ -552,21 +560,23 @@ cdef void dijkstra_one_row(unsigned int i_node,
     graph : array, shape = (N,)
         on return, graph[i_node] contains the path lengths from
         i_node to each target
-    heap: the Fibonacci heap object to use
+    heap : the Fibonacci heap object to use
     nodes : the array of nodes to use
     """
     cdef unsigned int N = graph.shape[0]
-    cdef unsigned int i
-    cdef FibonacciNode *v, *current_neighbor
+    cdef unsigned int i_N
+    cdef ITYPE_t i
+    cdef FibonacciNode *v
+    cdef FibonacciNode *current_neighbor
     cdef DTYPE_t dist
 
     # re-initialize nodes
     # children, parent, left_sibling, right_sibling should already be NULL
     # rank should already be 0, index will already be set
     # we just need to re-set state and val
-    for i from 0 <= i < N:
-        nodes[i].state = 0  # 0 -> NOT_IN_HEAP
-        nodes[i].val = 0
+    for i_N in range(0, N):
+        nodes[i_N].state = 0  # 0 -> NOT_IN_HEAP
+        nodes[i_N].val = 0
 
     insert_node(heap, &nodes[i_node])
 

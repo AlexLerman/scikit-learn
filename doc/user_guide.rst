@@ -1,25 +1,32 @@
+.. Places parent toc into the sidebar
+
+:parenttoc: True
+
 .. title:: User guide: contents
-
-..
-    We are putting the title as a raw HTML so that it doesn't appear in
-    the contents
-
-.. raw:: html
-
-    <h1>User guide: contents</h1>
 
 .. _user_guide:
 
-.. include:: includes/bigger_toc_css.rst
+==========
+User Guide
+==========
+
+.. include:: includes/big_toc_css.rst
+
+.. nice layout in the toc
+
+.. include:: tune_toc.rst
 
 .. toctree::
    :numbered:
+   :maxdepth: 3
 
-   install
-   tutorial/index.rst
    supervised_learning.rst
    unsupervised_learning.rst
    model_selection.rst
+   inspection.rst
+   visualizations.rst
    data_transforms.rst
-   Dataset loading utilities <datasets/index.rst>
-   Reference <modules/classes.rst>
+   datasets.rst
+   computing.rst
+   modules/model_persistence.rst
+   common_pitfalls.rst
